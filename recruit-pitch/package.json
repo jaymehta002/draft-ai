@@ -5,7 +5,9 @@
   "description": "AI-powered outreach drafts for X and LinkedIn",
   "author": "Jay",
   "scripts": {
-    "dev": "plasmo dev",
+    "dev": "plasmo build --watch",
+    "dev:hmr": "plasmo dev",
+    "dev:stable": "plasmo build --watch",
     "build": "plasmo build",
     "package": "plasmo package"
   },

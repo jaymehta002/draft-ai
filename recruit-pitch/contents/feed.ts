@@ -1,8 +1,12 @@
 import type { PlasmoCSConfig } from "plasmo"
-import { useEffect } from "react"
-import cssText from "data-text:~style.css"
+import { AUTH_STORAGE_KEYS } from "~lib/config"
 import { DRAFT_STORAGE_KEY, type DraftPreview } from "~lib/draft"
 import { persistDraftEdits } from "~lib/draft-sync"
+import {
+  dedupeInnermostPosts,
+  injectStylesIntoShadowRoots,
+  queryAllDeep,
+} from "~lib/dom-query"
 import {
   getLocalStorage,
   isExtensionContextValid,
@@ -19,14 +23,28 @@ import {
 } from "~lib/sent-posts"
 
 export const config: PlasmoCSConfig = {
-  matches: ["*://*.x.com/*", "*://*.linkedin.com/*"]
+  matches: ["*://*.x.com/*", "*://*.linkedin.com/*"],
+  run_at: "document_idle",
+  all_frames: false,
 }
 
-export const getStyle = () => {
-  const style = document.createElement("style")
-  style.textContent = cssText + POPOVER_STYLES
-  return style
-}
+const DRAFT_BTN_INLINE_STYLE = [
+  "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+  "display:inline-flex",
+  "align-items:center",
+  "gap:5px",
+  "background:#171717",
+  "color:#fff",
+  "font-size:12px",
+  "font-weight:500",
+  "padding:5px 12px",
+  "border-radius:6px",
+  "border:none",
+  "cursor:pointer",
+  "margin-left:8px",
+  "flex-shrink:0",
+  "line-height:1.2",
+].join(";")
 
 const POPOVER_STYLES = `
   .rp-draft-btn {
@@ -232,7 +250,6 @@ const LINKEDIN_POST_SELECTORS = [
 ].join(", ")
 
 const looksLikeLinkedInPost = (container: HTMLElement) => {
-  if (container.querySelector(".rp-draft-btn, .rp-draft-btn-wrap")) return false
   if (container.hasAttribute("data-urn") || container.hasAttribute("data-id")) return true
   if (container.querySelector("[data-urn], [data-id^='urn:li:activity']")) return true
   if (container.querySelector('a[href*="/feed/update/"], a[href*="/posts/"]')) return true
@@ -246,32 +263,46 @@ const looksLikeLinkedInPost = (container: HTMLElement) => {
   return buttons.length >= 3 && Boolean(container.querySelector("[role='group']"))
 }
 
-const isTopLevelLinkedInPost = (post: HTMLElement) => {
-  let parent = post.parentElement
-  while (parent && parent !== document.body) {
-    if (looksLikeLinkedInPost(parent)) return false
-    parent = parent.parentElement
-  }
-  return true
-}
-
 const findLinkedInPosts = () => {
   const seen = new Set<HTMLElement>()
   const posts: HTMLElement[] = []
 
   const addCandidate = (node: Element) => {
     const post = node as HTMLElement
-    if (seen.has(post) || !looksLikeLinkedInPost(post) || !isTopLevelLinkedInPost(post)) return
+    if (seen.has(post) || !looksLikeLinkedInPost(post)) return
     seen.add(post)
     posts.push(post)
   }
 
-  document.querySelectorAll(LINKEDIN_POST_SELECTORS).forEach(addCandidate)
-  document
-    .querySelectorAll('[data-testid="mainFeed"] div[role="listitem"], main div[role="listitem"]')
-    .forEach(addCandidate)
+  for (const selector of LINKEDIN_POST_SELECTORS.split(",").map((s) => s.trim())) {
+    queryAllDeep(selector).forEach(addCandidate)
+  }
 
-  return posts
+  queryAllDeep('[data-testid="mainFeed"] div[role="listitem"]').forEach(addCandidate)
+  queryAllDeep('main div[role="listitem"]').forEach(addCandidate)
+
+  return dedupeInnermostPosts(posts)
+}
+
+const findLinkedInSocialRow = (post: HTMLElement) => {
+  const socialLabels = ["like", "comment", "repost", "react", "send", "share"]
+  const socialButtons = Array.from(post.querySelectorAll("button[aria-label]")).filter((btn) => {
+    const label = btn.getAttribute("aria-label")?.toLowerCase() || ""
+    return socialLabels.some((word) => label.includes(word))
+  })
+
+  if (socialButtons.length >= 2) {
+    let container: Element | null = socialButtons[0].parentElement
+    while (container && container !== post) {
+      if (socialButtons.every((btn) => container!.contains(btn))) {
+        return container
+      }
+      container = container.parentElement
+    }
+    return socialButtons[0].parentElement
+  }
+
+  return null
 }
 
 const findLinkedInActionBar = (post: HTMLElement) => {
@@ -287,6 +318,9 @@ const findLinkedInActionBar = (post: HTMLElement) => {
     const el = post.querySelector(selector)
     if (el) return el
   }
+
+  const socialRow = findLinkedInSocialRow(post)
+  if (socialRow) return socialRow
 
   for (const group of post.querySelectorAll('[role="group"]')) {
     if (group.querySelectorAll("button").length >= 2) return group
@@ -416,10 +450,12 @@ let activePopover: HTMLElement | null = null
 
 const injectCSS = () => {
   if (!document.getElementById("recruit-pitch-style")) {
-    const style = getStyle()
+    const style = document.createElement("style")
     style.id = "recruit-pitch-style"
+    style.textContent = POPOVER_STYLES
     document.head.appendChild(style)
   }
+  injectStylesIntoShadowRoots(POPOVER_STYLES, "recruit-pitch-style-shadow")
 }
 
 const getPlatform = () => {
@@ -450,7 +486,7 @@ async function resolvePostId(
 }
 
 const extractEmail = (text: string) => {
-  const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/
+  const emailRegex = /\b([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/
   const match = text.match(emailRegex)
   return match ? match[1] : null
 }
@@ -465,6 +501,7 @@ const CONTEXT_INVALID_MSG = "Extension was updated — refresh this page to cont
 
 const applySentState = (button: HTMLButtonElement) => {
   button.className = "rp-draft-btn rp-draft-btn--sent"
+  button.style.cssText = DRAFT_BTN_INLINE_STYLE + ";background:#16a34a;opacity:1;cursor:default;"
   button.innerHTML = "✓ Sent"
   button.disabled = true
   button.dataset.postSent = "true"
@@ -502,6 +539,23 @@ const getPostsForPlatform = (platform: PlatformConfig) =>
 
 const getActionBarForPost = (post: HTMLElement, platform: PlatformConfig) =>
   platform.findActionBar?.(post) ?? post.querySelector(platform.actionBarSelector)
+
+const getOrCreateInjectionTarget = (post: HTMLElement, platform: PlatformConfig): Element | null => {
+  const actionBar = getActionBarForPost(post, platform)
+  if (actionBar) return actionBar
+
+  if (platform.id !== "LINKEDIN") return null
+
+  let fallback = post.querySelector(":scope > .rp-draft-fallback-bar") as HTMLElement | null
+  if (!fallback) {
+    fallback = document.createElement("div")
+    fallback.className = "rp-draft-fallback-bar"
+    fallback.style.cssText =
+      "display:flex;justify-content:flex-end;align-items:center;padding:6px 16px 10px;gap:8px;"
+    post.appendChild(fallback)
+  }
+  return fallback
+}
 
 const appendDraftButton = (actionBar: Element, button: HTMLButtonElement) => {
   const wrap = document.createElement("div")
@@ -900,8 +954,8 @@ const injectButton = async (post: HTMLElement, platform: PlatformConfig) => {
   if (post.hasAttribute("data-recruit-pitch-injected")) return
   post.setAttribute("data-recruit-pitch-injected", "true")
 
-  const actionBar = getActionBarForPost(post, platform)
-  if (!actionBar) {
+  const injectionTarget = getOrCreateInjectionTarget(post, platform)
+  if (!injectionTarget) {
     post.removeAttribute("data-recruit-pitch-injected")
     return
   }
@@ -917,10 +971,11 @@ const injectButton = async (post: HTMLElement, platform: PlatformConfig) => {
   const button = document.createElement("button")
   button.type = "button"
   button.dataset.draftAiPostId = postId
+  button.style.cssText = DRAFT_BTN_INLINE_STYLE
 
   if (sentPostsCache[postId] || (await isPostSent(postId))) {
     applySentState(button)
-    appendDraftButton(actionBar, button)
+    appendDraftButton(injectionTarget, button)
     return
   }
 
@@ -944,27 +999,56 @@ const injectButton = async (post: HTMLElement, platform: PlatformConfig) => {
     handleDraftClick(button, post, platform)
   })
 
-  appendDraftButton(actionBar, button)
+  appendDraftButton(injectionTarget, button)
 }
 
 const runInjection = async (platform: PlatformConfig) => {
   if (!isExtensionContextValid()) return
 
-  const auth = await getLocalStorage<{ enabled?: boolean; apiKey?: string }>(["enabled", "apiKey"])
-  if (!auth || auth.enabled === false || !auth.apiKey) return
+  const auth = await getLocalStorage<Record<string, string | boolean | undefined>>([
+    AUTH_STORAGE_KEYS.enabled,
+    AUTH_STORAGE_KEYS.apiKey,
+  ])
+  if (!auth?.[AUTH_STORAGE_KEYS.apiKey] || auth[AUTH_STORAGE_KEYS.enabled] === false) return
 
+  injectCSS()
   await loadSentPosts()
 
   const injectAll = () => {
+    if (!isExtensionContextValid()) {
+      teardownContentScript()
+      showContextInvalidBanner()
+      return
+    }
+
     getPostsForPlatform(platform).forEach((post) => {
       void injectButton(post, platform)
     })
   }
 
+  let injectScheduled = false
+  const scheduleInjectAll = () => {
+    if (injectScheduled) return
+    injectScheduled = true
+    window.requestAnimationFrame(() => {
+      injectScheduled = false
+      injectAll()
+    })
+  }
+
   domObserver?.disconnect()
   domObserver = new MutationObserver((mutations) => {
+    if (!isExtensionContextValid()) {
+      teardownContentScript()
+      showContextInvalidBanner()
+      return
+    }
+
     for (const mutation of mutations) {
-      if (mutation.addedNodes.length) injectAll()
+      if (mutation.addedNodes.length) {
+        scheduleInjectAll()
+        break
+      }
     }
   })
 
@@ -972,7 +1056,7 @@ const runInjection = async (platform: PlatformConfig) => {
   injectAll()
 
   injectRetryTimers.forEach((timer) => window.clearTimeout(timer))
-  injectRetryTimers = [1000, 3000, 8000].map((delay) =>
+  injectRetryTimers = [1000, 3000, 8000, 15000, 30000].map((delay) =>
     window.setTimeout(injectAll, delay)
   )
 }
@@ -993,24 +1077,33 @@ function bootstrapContentScript() {
   injectCSS()
 
   removeStorageListener = onLocalStorageChanged((changes, area) => {
-    if (area !== "local" || !changes[SENT_POSTS_STORAGE_KEY]) return
-    sentPostsCache = (changes[SENT_POSTS_STORAGE_KEY].newValue as SentPostsMap) || {}
-    refreshButtonsForSentPosts()
+    if (area !== "local") return
+
+    if (changes[SENT_POSTS_STORAGE_KEY]) {
+      sentPostsCache = (changes[SENT_POSTS_STORAGE_KEY].newValue as SentPostsMap) || {}
+      refreshButtonsForSentPosts()
+    }
+
+    if (changes.apiKey || changes.enabled || changes.userEmail) {
+      startObserver()
+    }
   })
 
   startObserver()
 }
 
-export default function RecruitPitchContent() {
-  useEffect(() => {
-    if (!isExtensionContextValid()) {
-      showContextInvalidBanner()
-      return
-    }
+function initWhenReady() {
+  if (!isExtensionContextValid()) {
+    showContextInvalidBanner()
+    return
+  }
 
-    bootstrapContentScript()
-    return () => teardownContentScript()
-  }, [])
+  if (!document.body) {
+    document.addEventListener("DOMContentLoaded", initWhenReady, { once: true })
+    return
+  }
 
-  return null
+  bootstrapContentScript()
 }
+
+initWhenReady()
