@@ -14,6 +14,13 @@ import { WorkExperienceEditor } from "@/components/profile/work-experience-edito
 import { ProjectsEditor } from "@/components/profile/projects-editor"
 import { CertificatesEditor } from "@/components/profile/certificates-editor"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 
@@ -38,6 +45,7 @@ export function ReviewStep({
   onUpdate: (field: keyof CandidateProfileData, value: string) => void
   onProfilePatch: (patch: Partial<CandidateProfileData>) => void
 }) {
+  const emptySelectValue = "__empty__"
   const [editing, setEditing] = useState<keyof CandidateProfileData | null>(null)
   const [editValue, setEditValue] = useState("")
   const [editingStructured, setEditingStructured] = useState<"work" | "projects" | "certificates" | null>(null)
@@ -93,7 +101,7 @@ export function ReviewStep({
                     const t = section.type as "work" | "projects" | "certificates"
                     setEditingStructured(editingStructured === t ? null : t)
                   }}
-                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {editingStructured === section.type ? (
                     <><Check className="h-3.5 w-3.5" /> Done</>
@@ -192,7 +200,7 @@ export function ReviewStep({
                         <button
                           type="button"
                           onClick={() => (editing === field ? saveEdit() : startEdit(field))}
-                          className="text-muted-foreground hover:text-foreground p-1"
+                          className="rounded-md p-1 text-muted-foreground transition-colors duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                         >
                           {editing === field ? (
                             <Check className="h-4 w-4 text-primary" />
@@ -209,11 +217,22 @@ export function ReviewStep({
                           {getFieldConfig(field)?.inputType === "textarea" ? (
                             <Textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} className="text-sm min-h-20" autoFocus />
                           ) : getFieldConfig(field)?.inputType === "select" ? (
-                            <select value={editValue} onChange={(e) => setEditValue(e.target.value)} className="w-full rounded-lg border border-input px-3 py-2 text-sm">
-                              {getFieldConfig(field)?.options?.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                              ))}
-                            </select>
+                            <Select
+                              value={editValue || emptySelectValue}
+                              onValueChange={(value) => setEditValue(value === emptySelectValue ? "" : value)}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Select..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={emptySelectValue}>Select...</SelectItem>
+                                {getFieldConfig(field)?.options?.map((o) => (
+                                  <SelectItem key={o.value} value={o.value}>
+                                    {o.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           ) : (
                             <Input value={editValue} onChange={(e) => setEditValue(e.target.value)} className="text-sm h-9" autoFocus />
                           )}

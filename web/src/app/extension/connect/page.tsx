@@ -1,156 +1,495 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useSession, signIn } from "next-auth/react"
-import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { motion } from "framer-motion"
-import { CheckCircle2, Loader2, Plug } from "lucide-react"
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { DraftAIBrand } from "@/components/draft-ai-logo"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FadeIn } from "@/components/motion"
+import { Card, CardContent } from "@/components/ui/card"
 
 const AUTH_MESSAGE_TYPE = "RECRUIT_PITCH_AUTH"
+const CONNECT_TIMEOUT_MS = 20_000
+const SLOW_CONNECT_HINT_MS = 8_000
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type ErrorKind =
+  | "invalid-state"
+  | "onboarding"
+  | "already-connected"
+  | "rate-limited"
+  | "timeout"
+  | "offline"
+  | "network"
+  | "server"
+  | "unknown"
+
+interface ErrorInfo {
+  kind: ErrorKind
+  title: string
+  message: string
+  retryable: boolean
+  action?: { label: string; href: string }
+}
+
+type ConnectPhase =
+  | { step: "checking" }
+  | { step: "missing-state" }
+  | { step: "redirecting" }
+  | { step: "connecting"; attempt: number }
+  | { step: "success"; email: string }
+  | { step: "error"; info: ErrorInfo; attempt: number }
+
+// ---------------------------------------------------------------------------
+// Error classification
+// ---------------------------------------------------------------------------
+
+function classifyError(status: number | null, code: string | undefined, rawMessage: string | undefined): ErrorInfo {
+  const msg = (rawMessage || "").toLowerCase()
+
+  if (code === "onboarding_incomplete" || msg.includes("onboarding")) {
+    return {
+      kind: "onboarding",
+      title: "Profile incomplete",
+      message: "Finish setting up your Draft AI profile, then reopen the extension to connect.",
+      retryable: false,
+      action: { label: "Complete your profile", href: "/onboarding" },
+    }
+  }
+
+  if (code === "invalid_state" || code === "expired_state" || status === 400 || msg.includes("state")) {
+    return {
+      kind: "invalid-state",
+      title: "Link expired",
+      message: "This connection link was already used or has timed out. Start again from the extension.",
+      retryable: false,
+    }
+  }
+
+  if (code === "already_connected" || status === 409) {
+    return {
+      kind: "already-connected",
+      title: "Already connected",
+      message: "This extension is already linked to your account.",
+      retryable: false,
+    }
+  }
+
+  if (code === "rate_limited" || status === 429) {
+    return {
+      kind: "rate-limited",
+      title: "Too many attempts",
+      message: "Wait a minute before trying again.",
+      retryable: true,
+    }
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      kind: "invalid-state",
+      title: "Session expired",
+      message: "Sign in again to continue.",
+      retryable: false,
+    }
+  }
+
+  if (status !== null && status >= 500) {
+    return {
+      kind: "server",
+      title: "Something went wrong",
+      message: "Draft AI ran into a problem on our end. This is usually temporary.",
+      retryable: true,
+    }
+  }
+
+  return {
+    kind: "unknown",
+    title: "Couldn't connect",
+    message: rawMessage || "An unexpected error occurred.",
+    retryable: true,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Status mark — the one signature element. A thin ring that morphs between
+// a slow spinner arc, a drawn checkmark, and a drawn X. No icon library.
+// ---------------------------------------------------------------------------
+
+function StatusMark({ state }: { state: "idle" | "connecting" | "success" | "error" }) {
+  const reduceMotion = useReducedMotion()
+
+  const ringClass =
+    state === "success"
+      ? "text-accent"
+      : state === "error"
+        ? "text-destructive/70"
+        : "text-foreground/25"
+
+  return (
+    <div className="relative flex h-11 w-11 items-center justify-center">
+      <svg viewBox="0 0 40 40" className={`h-11 w-11 ${ringClass} transition-colors duration-500`}>
+        <circle cx="20" cy="20" r="17.5" fill="none" stroke="currentColor" strokeWidth="1.25" />
+      </svg>
+
+      <AnimatePresence mode="wait">
+        {state === "connecting" && (
+          <motion.svg
+            key="spinner"
+            viewBox="0 0 40 40"
+            className="absolute inset-0 h-11 w-11 text-foreground"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, rotate: reduceMotion ? 0 : 360 }}
+            exit={{ opacity: 0 }}
+            transition={
+              reduceMotion
+                ? { opacity: { duration: 0.2 } }
+                : { rotate: { repeat: Infinity, duration: 1.6, ease: "linear" }, opacity: { duration: 0.2 } }
+            }
+          >
+            <circle
+              cx="20"
+              cy="20"
+              r="17.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.25"
+              strokeLinecap="round"
+              strokeDasharray="18 92"
+            />
+          </motion.svg>
+        )}
+
+        {state === "success" && (
+          <motion.svg
+            key="check"
+            viewBox="0 0 40 40"
+            className="absolute inset-0 h-11 w-11 text-accent"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.path
+              d="M13 20.5L18 25.5L27.5 15"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 0.45, ease: "easeOut", delay: 0.1 }}
+            />
+          </motion.svg>
+        )}
+
+        {state === "error" && (
+          <motion.svg
+            key="x"
+            viewBox="0 0 40 40"
+            className="absolute inset-0 h-11 w-11 text-destructive"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.path
+              d="M14.5 14.5L25.5 25.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 0.25, ease: "easeOut", delay: 0.1 }}
+            />
+            <motion.path
+              d="M25.5 14.5L14.5 25.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 0.25, ease: "easeOut", delay: 0.3 }}
+            />
+          </motion.svg>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main content
+// ---------------------------------------------------------------------------
+
+const fade = {
+  initial: { opacity: 0, y: 3 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -3 },
+  transition: { duration: 0.25 },
+}
 
 function ExtensionConnectContent() {
   const { data: session, status } = useSession()
   const searchParams = useSearchParams()
-  const state = searchParams.get("state")
-  const [connectionStatus, setConnectionStatus] = useState<"idle" | "connecting" | "success" | "error">("idle")
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const rawState = searchParams.get("state")
+  const state = rawState && rawState.trim().length > 0 ? rawState : null
 
-  useEffect(() => {
-    if (!state) {
-      setConnectionStatus("error")
-      setErrorMessage("Missing connection state. Open this page from the Draft AI extension.")
-      return
-    }
+  const [phase, setPhase] = useState<ConnectPhase>({ step: "checking" })
+  const [isSlow, setIsSlow] = useState(false)
 
-    if (status === "unauthenticated") {
-      signIn("google", { callbackUrl: `/extension/connect?state=${state}` })
-      return
-    }
+  const hasStartedRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
+  const attemptRef = useRef(0)
 
-    if (status !== "authenticated" || connectionStatus !== "idle") {
-      return
-    }
+  const runConnect = useCallback(
+    async (currentState: string) => {
+      const attempt = attemptRef.current + 1
+      attemptRef.current = attempt
 
-    const connect = async () => {
-      setConnectionStatus("connecting")
+      setIsSlow(false)
+      setPhase({ step: "connecting", attempt })
+
+      const controller = new AbortController()
+      abortRef.current = controller
+      const timeoutId = setTimeout(() => controller.abort("timeout"), CONNECT_TIMEOUT_MS)
+      const slowTimer = setTimeout(() => setIsSlow(true), SLOW_CONNECT_HINT_MS)
 
       try {
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          throw { offline: true }
+        }
+
         const response = await fetch("/api/extension/connect", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ state }),
+          body: JSON.stringify({ state: currentState }),
+          signal: controller.signal,
         })
 
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to connect extension")
+        let data: any = null
+        try {
+          data = await response.json()
+        } catch {
+          data = null
         }
 
-        window.postMessage(
-          {
-            type: AUTH_MESSAGE_TYPE,
-            state: data.state,
-            apiKey: data.apiKey,
-            email: data.email,
-            name: data.name,
-          },
-          window.location.origin
-        )
+        if (!response.ok) {
+          const info = classifyError(response.status, data?.code, data?.error)
+          if (info.kind === "already-connected") {
+            setPhase({ step: "success", email: data?.email || session?.user?.email || "" })
+            return
+          }
+          setPhase({ step: "error", info: { ...info, message: data?.error || info.message }, attempt })
+          return
+        }
 
-        setConnectionStatus("success")
-      } catch (error) {
-        setConnectionStatus("error")
-        setErrorMessage(error instanceof Error ? error.message : "Failed to connect extension")
+        try {
+          window.postMessage(
+            {
+              type: AUTH_MESSAGE_TYPE,
+              state: data?.state ?? currentState,
+              apiKey: data?.apiKey,
+              email: data?.email,
+              name: data?.name,
+            },
+            window.location.origin
+          )
+        } catch {
+          // Connection still succeeded server-side even if postMessage throws.
+        }
+
+        setPhase({ step: "success", email: data?.email || session?.user?.email || "" })
+      } catch (err: any) {
+        if (err?.offline) {
+          setPhase({
+            step: "error",
+            info: { kind: "offline", title: "You're offline", message: "Reconnect and try again.", retryable: true },
+            attempt,
+          })
+        } else if (err?.name === "AbortError" || controller.signal.aborted) {
+          setPhase({
+            step: "error",
+            info: {
+              kind: "timeout",
+              title: "Taking too long",
+              message: "The request timed out. Draft AI may be temporarily unavailable.",
+              retryable: true,
+            },
+            attempt,
+          })
+        } else {
+          setPhase({
+            step: "error",
+            info: { kind: "network", title: "Couldn't reach Draft AI", message: "Check your connection and try again.", retryable: true },
+            attempt,
+          })
+        }
+      } finally {
+        clearTimeout(timeoutId)
+        clearTimeout(slowTimer)
+        if (abortRef.current === controller) abortRef.current = null
       }
-    }
+    },
+    [session?.user?.email]
+  )
 
-    connect()
-  }, [state, status, connectionStatus])
+  useEffect(() => {
+    if (!state) {
+      setPhase({ step: "missing-state" })
+      return
+    }
+    if (status === "loading") return
+    if (status === "unauthenticated") {
+      setPhase({ step: "redirecting" })
+      signIn("google", { callbackUrl: `/extension/connect?state=${encodeURIComponent(state)}` })
+      return
+    }
+    if (status === "authenticated" && !hasStartedRef.current) {
+      hasStartedRef.current = true
+      runConnect(state)
+    }
+  }, [state, status, runConnect])
+
+  useEffect(() => () => abortRef.current?.abort("unmount"), [])
+
+  const handleRetry = () => state && runConnect(state)
+  const handleCloseTab = () => {
+    try {
+      window.close()
+    } catch {
+      // Script-initiated close can be blocked; the copy already tells them to close manually.
+    }
+  }
+
+  const markState: "idle" | "connecting" | "success" | "error" =
+    phase.step === "success" || (phase.step === "error" && phase.info.kind === "already-connected")
+      ? "success"
+      : phase.step === "error"
+        ? "error"
+        : phase.step === "connecting"
+          ? "connecting"
+          : "idle"
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50/40 via-background to-background flex items-center justify-center p-6">
-      <FadeIn className="max-w-md w-full">
-        <Card className="shadow-xl shadow-blue-500/5 border-border/60">
-          <CardHeader className="text-center space-y-4">
-            <div className="flex justify-center">
-              <DraftAIBrand />
-            </div>
-            <CardTitle className="flex items-center justify-center gap-2">
-              <Plug className="h-5 w-5 text-primary" />
-              Connect extension
-            </CardTitle>
-            <CardDescription>
-              Link your Draft AI Chrome extension to this account
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            {!state && <p className="text-sm text-destructive">{errorMessage}</p>}
+    <div className="flex min-h-screen items-center justify-center bg-background px-6 py-10">
+      <Card className="w-full max-w-sm border-border shadow-sm">
+        <CardContent className="p-8 sm:p-10">
+        <div className="mb-10 flex justify-center">
+          <DraftAIBrand />
+        </div>
 
-            {state && status === "loading" && (
-              <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Checking session...
-              </div>
+        <p className="mb-8 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Extension connection
+        </p>
+
+        <div className="flex flex-col items-center text-center" role="status" aria-live="polite">
+          <StatusMark state={markState} />
+
+          <div className="mt-6 min-h-[64px] w-full">
+            <AnimatePresence mode="wait">
+              {phase.step === "missing-state" && (
+                <motion.div key="missing" {...fade}>
+                  <p className="text-base font-medium text-foreground">Missing connection link</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    Open the extension and choose &ldquo;Connect account&rdquo; to start again.
+                  </p>
+                </motion.div>
+              )}
+
+              {phase.step === "checking" && (
+                <motion.p key="checking" {...fade} className="text-sm text-muted-foreground">
+                  Checking your session
+                </motion.p>
+              )}
+
+              {phase.step === "redirecting" && (
+                <motion.p key="redirecting" {...fade} className="text-sm text-muted-foreground">
+                  Redirecting to sign in
+                </motion.p>
+              )}
+
+              {phase.step === "connecting" && (
+                <motion.div key="connecting" {...fade}>
+                  <p className="text-base font-medium text-foreground">Connecting your account</p>
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    {session?.user?.email ?? "Signing you in"}
+                  </p>
+                  {isSlow && (
+                    <p className="mt-2 text-xs text-muted-foreground/70">Still working — this is taking a moment.</p>
+                  )}
+                </motion.div>
+              )}
+
+              {phase.step === "success" && (
+                <motion.div key="success" {...fade}>
+                  <p className="text-base font-medium text-foreground">Connected</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    Signed in as {phase.email || "your Draft AI account"}. Close this tab and return to X or LinkedIn.
+                  </p>
+                </motion.div>
+              )}
+
+              {phase.step === "error" && (
+                <motion.div key={`error-${phase.info.kind}-${phase.attempt}`} {...fade}>
+                  <p className="text-base font-medium text-foreground">{phase.info.title}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{phase.info.message}</p>
+                  {phase.attempt > 1 && (
+                    <p className="mt-2 text-xs text-muted-foreground/60">Attempt {phase.attempt}</p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="mt-2 flex items-center gap-5">
+            {phase.step === "success" && (
+              <Button variant="outline" size="sm" onClick={handleCloseTab}>
+                Close this tab
+              </Button>
             )}
 
-            {state && status === "unauthenticated" && (
-              <p className="text-muted-foreground">Redirecting to sign in...</p>
+            {phase.step === "error" && phase.info.retryable && (
+              <Button size="sm" onClick={handleRetry}>
+                Try again
+              </Button>
             )}
 
-            {state && connectionStatus === "connecting" && (
-              <motion.div
-                animate={{ opacity: [0.5, 1, 0.5] }}
-                transition={{ repeat: Infinity, duration: 1.5 }}
-                className="flex items-center justify-center gap-2 text-muted-foreground"
+            {phase.step === "error" && phase.info.action && (
+              <a
+                href={phase.info.action.href}
+                className="text-sm text-foreground underline underline-offset-4 decoration-foreground/30 transition-colors hover:decoration-foreground"
               >
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Linking to {session?.user?.email}...
-              </motion.div>
+                {phase.info.action.label}
+              </a>
             )}
+          </div>
 
-            {state && connectionStatus === "success" && (
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="space-y-2"
-              >
-                <CheckCircle2 className="h-12 w-12 text-emerald-500 mx-auto" />
-                <p className="font-medium text-emerald-700">Extension connected!</p>
-                <p className="text-sm text-muted-foreground">
-                  Signed in as {session?.user?.email}. Close this tab and return to X or LinkedIn.
-                </p>
-              </motion.div>
-            )}
-
-            {state && connectionStatus === "error" && (
-              <>
-                <p className="text-sm text-destructive">{errorMessage}</p>
-                {errorMessage?.includes("onboarding") && (
-                  <Button variant="outline" asChild>
-                    <a href="/onboarding">Complete your profile</a>
-                  </Button>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </FadeIn>
+          {phase.step === "error" && phase.attempt >= 3 && (
+            <p className="mt-8 max-w-xs text-xs leading-relaxed text-muted-foreground/70">
+              Still stuck? Reopen the extension from your toolbar and start the connection fresh.
+            </p>
+          )}
+        </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Page export
+// ---------------------------------------------------------------------------
 
 export default function ExtensionConnectPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <StatusMark state="connecting" />
         </div>
       }
     >

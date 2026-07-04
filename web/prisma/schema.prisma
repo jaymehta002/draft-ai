@@ -19,6 +19,7 @@ model User {
   apiKeys          ApiKey[]
   postDrafts       PostDraft[]
   sentOutreach     SentOutreach[]
+  stats            UserStats?
 }
 
 model Account {
@@ -99,6 +100,11 @@ model CandidateProfile {
   skills             String?  @db.Text
   certifications     String?  @db.Text
   resumeFileName     String?
+  resumeMimeType     String?
+  resumeStorageKey   String?
+  resumeFileUrl      String?
+  resumeFileSize     Int?
+  resumeFileData     Bytes?
   resumeContent      String?  @db.Text
   desiredRoles       String?
   salaryExpectation  String?
@@ -162,4 +168,20 @@ model SentOutreach {
 
   @@index([userId, sentAt])
   @@index([postId])
+}
+
+model UserStats {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  sentToday      Int      @default(0)
+  sentThisWeek   Int      @default(0)
+  totalSent      Int      @default(0)
+  draftsToday    Int      @default(0)
+  lastResetDate  String   // YYYY-MM-DD format
+  lastResetWeek  String   // YYYY-Wxx format
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

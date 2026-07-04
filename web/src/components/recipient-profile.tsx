@@ -46,7 +46,7 @@ export function RecipientProfile({
             href={profileUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            className="mt-1 inline-flex items-center gap-1 rounded-sm text-xs text-primary underline-offset-4 transition-colors duration-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <ExternalLink className="h-3 w-3" />
             View profile

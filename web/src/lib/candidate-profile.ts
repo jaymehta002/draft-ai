@@ -46,6 +46,11 @@ export type CandidateProfileData = {
   skills: string
   certifications: string
   resumeFileName: string
+  resumeMimeType: string
+  resumeStorageKey: string
+  resumeFileUrl: string
+  resumeFileSize: string
+  resumeFileData: string
   resumeContent: string
   desiredRoles: string
   salaryExpectation: string
@@ -129,6 +134,11 @@ export function emptyProfile(): CandidateProfileData {
     skills: "",
     certifications: "",
     resumeFileName: "",
+    resumeMimeType: "",
+    resumeStorageKey: "",
+    resumeFileUrl: "",
+    resumeFileSize: "",
+    resumeFileData: "",
     resumeContent: "",
     desiredRoles: "",
     salaryExpectation: "",
@@ -228,7 +238,7 @@ export function migrateLegacyToStructured(profile: {
   certificates: CertificateEntry[]
 } {
   let workExperiences = parseJsonArray<WorkExperienceEntry>(profile.workExperiences, [])
-  let projects = parseJsonArray<ProjectEntry>(profile.projects, [])
+  const projects = parseJsonArray<ProjectEntry>(profile.projects, [])
   let certificates = parseJsonArray<CertificateEntry>(profile.certificates, [])
 
   if (workExperiences.length === 0) {
@@ -285,6 +295,11 @@ export function parseCandidateFormData(formData: FormData): CandidateProfileData
     skills: (formData.get("skills") as string) || "",
     certifications: (formData.get("certifications") as string) || "",
     resumeFileName: (formData.get("resumeFileName") as string) || "",
+    resumeMimeType: (formData.get("resumeMimeType") as string) || "",
+    resumeStorageKey: (formData.get("resumeStorageKey") as string) || "",
+    resumeFileUrl: (formData.get("resumeFileUrl") as string) || "",
+    resumeFileSize: (formData.get("resumeFileSize") as string) || "",
+    resumeFileData: (formData.get("resumeFileData") as string) || "",
     resumeContent: (formData.get("resumeContent") as string) || "",
     desiredRoles: (formData.get("desiredRoles") as string) || "",
     salaryExpectation: (formData.get("salaryExpectation") as string) || "",
@@ -295,7 +310,7 @@ export function parseCandidateFormData(formData: FormData): CandidateProfileData
   return syncLegacyFields(profile)
 }
 
-const REQUIRED_SCALAR_FIELDS: (keyof CandidateProfileData)[] = [
+const REQUIRED_SCALAR_FIELDS = [
   "fullName",
   "phone",
   "location",
@@ -312,18 +327,126 @@ const REQUIRED_SCALAR_FIELDS: (keyof CandidateProfileData)[] = [
   "salaryExpectation",
   "workPreference",
   "availability",
-]
+] as const
+
+export type OnboardingValidationIssue = {
+  field: string
+  label: string
+  tab: string
+  message: string
+}
+
+const REQUIRED_FIELD_META: Record<
+  (typeof REQUIRED_SCALAR_FIELDS)[number],
+  { label: string; tab: string }
+> = {
+  fullName: { label: "Full name", tab: "Basics" },
+  phone: { label: "Phone", tab: "Basics" },
+  location: { label: "Location", tab: "Basics" },
+  linkedinUrl: { label: "LinkedIn URL", tab: "Links" },
+  portfolioUrl: { label: "Portfolio URL", tab: "Links" },
+  githubUrl: { label: "GitHub URL", tab: "Links" },
+  yearsExperience: { label: "Years of experience", tab: "Basics" },
+  summary: { label: "Professional summary", tab: "Basics" },
+  education: { label: "Education", tab: "Basics" },
+  skills: { label: "Skills", tab: "Basics" },
+  resumeFileName: { label: "Resume file", tab: "Resume" },
+  resumeContent: { label: "Resume text", tab: "Resume" },
+  desiredRoles: { label: "Desired roles", tab: "Preferences" },
+  salaryExpectation: { label: "Salary expectation", tab: "Preferences" },
+  workPreference: { label: "Work preference", tab: "Preferences" },
+  availability: { label: "Availability", tab: "Preferences" },
+}
+
+function getWorkExperienceIssue(
+  entries: WorkExperienceEntry[]
+): OnboardingValidationIssue | null {
+  if (entries.some(isWorkExperienceValid)) {
+    return null
+  }
+
+  const entry =
+    entries.find((item) =>
+      Boolean(
+        item.title.trim() ||
+          item.company.trim() ||
+          item.description.trim() ||
+          item.joinMonth ||
+          item.joinYear ||
+          item.currentCtc.trim() ||
+          item.endMonth ||
+          item.endYear
+      )
+    ) ?? entries[0]
+
+  if (!entry) {
+    return {
+      field: "workExperiences",
+      label: "Work experience",
+      tab: "Experience",
+      message: "Add at least one complete work experience entry in the Experience tab.",
+    }
+  }
+
+  const missing: string[] = []
+
+  if (!entry.title.trim()) missing.push("title")
+  if (!entry.company.trim()) missing.push("company")
+  if (!entry.description.trim()) missing.push("description")
+  if (!entry.joinMonth || !entry.joinYear) missing.push("start month/year")
+  if (entry.isCurrent) {
+    if (!entry.currentCtc.trim()) missing.push("current CTC")
+  } else if (!entry.endMonth || !entry.endYear) {
+    missing.push("end month/year")
+  }
+
+  return {
+    field: "workExperiences",
+    label: "Work experience",
+    tab: "Experience",
+    message:
+      missing.length > 0
+        ? `Complete one work experience entry in the Experience tab: missing ${missing.join(", ")}.`
+        : "Add at least one complete work experience entry in the Experience tab.",
+  }
+}
+
+export function getOnboardingValidationIssues(
+  data: CandidateProfileData
+): OnboardingValidationIssue[] {
+  const synced = syncLegacyFields(data)
+
+  const scalarIssues = REQUIRED_SCALAR_FIELDS.flatMap((field) => {
+    const value = synced[field]
+    if (typeof value === "string" && value.trim()) return []
+
+    const meta = REQUIRED_FIELD_META[field]
+    return [
+      {
+        field,
+        label: meta.label,
+        tab: meta.tab,
+        message: `${meta.label} is required in the ${meta.tab} tab.`,
+      },
+    ]
+  })
+
+  const workIssue = getWorkExperienceIssue(synced.workExperiences)
+
+  return workIssue ? [...scalarIssues, workIssue] : scalarIssues
+}
+
+export function formatOnboardingValidationError(issues: OnboardingValidationIssue[]): string {
+  if (issues.length === 0) return "Please fill in all required fields before completing onboarding"
+
+  return [
+    "Complete the missing profile fields before finishing onboarding:",
+    ...issues.map((issue) => `• ${issue.label} — ${issue.tab} tab`),
+  ].join("\n")
+}
 
 export function isOnboardingComplete(data: CandidateProfileData): boolean {
-  const synced = syncLegacyFields(data)
-  const scalarsOk = REQUIRED_SCALAR_FIELDS.every((field) => {
-    const val = synced[field]
-    return typeof val === "string" && val.trim()
-  })
-  const workOk =
-    synced.workExperiences.length > 0 &&
-    synced.workExperiences.some(isWorkExperienceValid)
-  return scalarsOk && workOk
+  return getOnboardingValidationIssues(data).length === 0
 }
 
 export function profileToFormData(profile: CandidateProfileData): FormData {
@@ -332,7 +455,7 @@ export function profileToFormData(profile: CandidateProfileData): FormData {
   const scalarKeys: (keyof CandidateProfileData)[] = [
     "fullName", "phone", "location", "linkedinUrl", "portfolioUrl", "githubUrl",
     "currentTitle", "yearsExperience", "summary", "workExperience", "education",
-    "skills", "certifications", "resumeFileName", "resumeContent",
+    "skills", "certifications", "resumeFileName", "resumeMimeType", "resumeStorageKey", "resumeFileUrl", "resumeFileSize", "resumeFileData", "resumeContent",
     "desiredRoles", "salaryExpectation", "workPreference", "availability",
   ]
   for (const key of scalarKeys) {

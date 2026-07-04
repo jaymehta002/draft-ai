@@ -2,6 +2,13 @@
 
 import { Search, SlidersHorizontal } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
 export type FilterConfig = {
@@ -64,25 +71,30 @@ export function AdaptivePanel<T extends { id: string }>({
             />
           </div>
           <div className="flex gap-2">
-            <select
-              value={filters.sortField}
-              onChange={(e) => filters.onSortFieldChange(e.target.value)}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              {filters.sortOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <select
+            <Select value={filters.sortField} onValueChange={filters.onSortFieldChange}>
+              <SelectTrigger className="h-10 min-w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {filters.sortOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
               value={filters.sortDirection}
-              onChange={(e) => filters.onSortDirectionChange(e.target.value as "asc" | "desc")}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              onValueChange={(value) => filters.onSortDirectionChange(value as "asc" | "desc")}
             >
-              <option value="desc">Newest</option>
-              <option value="asc">Oldest</option>
-            </select>
+              <SelectTrigger className="h-10 min-w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="desc">Newest</SelectItem>
+                <SelectItem value="asc">Oldest</SelectItem>
+              </SelectContent>
+            </Select>
             {filters.filterSlot}
           </div>
         </div>

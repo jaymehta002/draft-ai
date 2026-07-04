@@ -34,6 +34,7 @@ import { ProjectsStep } from "@/components/onboarding/projects-step"
 import { CertificatesStep } from "@/components/onboarding/certificates-step"
 import { ReviewStep } from "@/components/onboarding/review-step"
 import { Button } from "@/components/ui/button"
+import { useUploadThing } from "@/lib/uploadthing-client"
 
 const emptyProfileState = emptyProfile()
 
@@ -57,6 +58,7 @@ export default function OnboardingPage() {
   const [skillSuggested, setSkillSuggested] = useState<string[]>([])
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [skillsFetched, setSkillsFetched] = useState(false)
+  const { startUpload } = useUploadThing("resumeUploader")
 
   const currentStep = stepQueue[stepIndex] ?? "review"
   const progress =
@@ -174,7 +176,15 @@ export default function OnboardingPage() {
     setSkillsFetched(false)
 
     try {
-      const text = await extractTextFromFile(file)
+      const [text, uploadedFiles] = await Promise.all([
+        extractTextFromFile(file),
+        startUpload([file]),
+      ])
+      const uploaded = uploadedFiles?.[0]
+
+      if (!uploaded) {
+        throw new Error("Resume upload failed")
+      }
 
       const res = await fetch("/api/onboarding/extract-resume", {
         method: "POST",
@@ -196,7 +206,12 @@ export default function OnboardingPage() {
       const nextProfile: CandidateProfileData = syncLegacyFields({
         ...profile,
         ...extractedProfile,
-        resumeFileName: file.name,
+        resumeFileName: uploaded.serverData?.fileName || uploaded.name || file.name,
+        resumeMimeType: uploaded.serverData?.fileType || uploaded.type || file.type || "application/octet-stream",
+        resumeStorageKey: uploaded.serverData?.storageKey || uploaded.key || "",
+        resumeFileUrl: uploaded.serverData?.fileUrl || uploaded.ufsUrl || uploaded.url || "",
+        resumeFileSize: String(uploaded.serverData?.fileSize || uploaded.size || file.size || ""),
+        resumeFileData: "",
         resumeContent: text,
         workExperiences: extractedProfile.workExperiences ?? profile.workExperiences,
         projects: extractedProfile.projects ?? profile.projects,
@@ -302,7 +317,7 @@ export default function OnboardingPage() {
       footer={
         showFooter ? (
           <div className="space-y-3">
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-sm text-destructive whitespace-pre-line">{error}</p>}
             <div className="flex justify-between gap-4">
               {showBack ? (
                 <Button type="button" variant="ghost" onClick={goBack} disabled={saving}>

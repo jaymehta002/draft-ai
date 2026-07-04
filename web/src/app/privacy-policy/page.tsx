@@ -83,12 +83,12 @@ const sections = [
 export default function PrivacyPolicyPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-4xl px-6 py-16 sm:px-8">
+      <div className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="mb-10">
           <p className="mb-3 text-sm font-medium text-muted-foreground">
             Draft AI
           </p>
-          <h1 className="text-4xl font-semibold tracking-tight">
+          <h1 className="font-serif text-4xl tracking-tight sm:text-5xl">
             Privacy Policy
           </h1>
           <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">
@@ -99,18 +99,18 @@ export default function PrivacyPolicyPage() {
           <div className="mt-6">
             <Link
               href="/"
-              className="text-sm font-medium text-foreground underline underline-offset-4"
+              className="text-sm font-medium text-foreground underline underline-offset-4 transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Back to Draft AI
             </Link>
           </div>
         </div>
 
-        <div className="rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8 lg:p-10">
           <div className="space-y-10">
             {sections.map((section) => (
               <section key={section.title}>
-                <h2 className="text-xl font-semibold tracking-tight">
+                <h2 className="font-serif text-2xl tracking-tight">
                   {section.title}
                 </h2>
                 <div className="mt-4 space-y-4 text-sm leading-7 text-muted-foreground sm:text-base">

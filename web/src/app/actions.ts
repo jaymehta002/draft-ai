@@ -6,6 +6,8 @@ import { authOptions } from "@/lib/auth"
 import { ensureUserApiKey } from "@/lib/api-key"
 import { randomBytes } from "crypto"
 import {
+  formatOnboardingValidationError,
+  getOnboardingValidationIssues,
   isOnboardingComplete,
   parseCandidateFormData,
   migrateLegacyToStructured,
@@ -14,6 +16,7 @@ import {
 } from "@/lib/candidate-profile"
 import { getEmailLifecycleState } from "@/lib/outreach-state"
 import { resolvePostUrl } from "@/lib/post-url"
+import { utapi } from "@/lib/uploadthing-server"
 
 async function getAuthenticatedUser() {
   const session = await getServerSession(authOptions)
@@ -43,6 +46,11 @@ function toCandidateProfileData(profile: {
   skills: string | null
   certifications: string | null
   resumeFileName: string | null
+  resumeMimeType: string | null
+  resumeStorageKey: string | null
+  resumeFileUrl: string | null
+  resumeFileSize: number | null
+  resumeFileData: Uint8Array | null
   resumeContent: string | null
   desiredRoles: string | null
   salaryExpectation: string | null
@@ -68,6 +76,11 @@ function toCandidateProfileData(profile: {
     skills: profile.skills ?? "",
     certifications: profile.certifications ?? "",
     resumeFileName: profile.resumeFileName ?? "",
+    resumeMimeType: profile.resumeMimeType ?? "",
+    resumeStorageKey: profile.resumeStorageKey ?? "",
+    resumeFileUrl: profile.resumeFileUrl ?? "",
+    resumeFileSize: profile.resumeFileSize?.toString() ?? "",
+    resumeFileData: profile.resumeFileData ? Buffer.from(profile.resumeFileData).toString("base64") : "",
     resumeContent: profile.resumeContent ?? "",
     desiredRoles: profile.desiredRoles ?? "",
     salaryExpectation: profile.salaryExpectation ?? "",
@@ -81,12 +94,19 @@ export async function saveCandidateProfile(formData: FormData, completeOnboardin
   const user = await getAuthenticatedUser()
   const data = syncLegacyFields(parseCandidateFormData(formData))
   const yearsExperience = data.yearsExperience ? parseInt(data.yearsExperience, 10) : null
+  const resumeFileSize = data.resumeFileSize ? parseInt(data.resumeFileSize, 10) : null
 
   const onboardingComplete = completeOnboarding ? isOnboardingComplete(data) : false
 
   if (completeOnboarding && !onboardingComplete) {
-    throw new Error("Please fill in all required fields before completing onboarding")
+    const issues = getOnboardingValidationIssues(data)
+    throw new Error(formatOnboardingValidationError(issues))
   }
+
+  const existingProfile = await prisma.candidateProfile.findUnique({
+    where: { userId: user.id },
+    select: { resumeStorageKey: true },
+  })
 
   const payload = {
     fullName: data.fullName,
@@ -106,6 +126,11 @@ export async function saveCandidateProfile(formData: FormData, completeOnboardin
     skills: data.skills,
     certifications: data.certifications,
     resumeFileName: data.resumeFileName,
+    resumeMimeType: data.resumeMimeType || null,
+    resumeStorageKey: data.resumeStorageKey || null,
+    resumeFileUrl: data.resumeFileUrl || null,
+    resumeFileSize: Number.isNaN(resumeFileSize) ? null : resumeFileSize,
+    resumeFileData: data.resumeFileData ? Buffer.from(data.resumeFileData, "base64") : null,
     resumeContent: data.resumeContent,
     desiredRoles: data.desiredRoles,
     salaryExpectation: data.salaryExpectation,
@@ -123,6 +148,17 @@ export async function saveCandidateProfile(formData: FormData, completeOnboardin
       onboardingComplete: completeOnboarding ? onboardingComplete : false,
     },
   })
+
+  const previousStorageKey = existingProfile?.resumeStorageKey?.trim() || null
+  const nextStorageKey = data.resumeStorageKey.trim() || null
+
+  if (previousStorageKey && previousStorageKey !== nextStorageKey) {
+    try {
+      await utapi.deleteFiles(previousStorageKey)
+    } catch (error) {
+      console.error("Failed to delete replaced resume from UploadThing:", error)
+    }
+  }
 }
 
 export async function saveHiringProfile(formData: FormData) {
@@ -367,7 +403,9 @@ export async function getDashboardData() {
   if (!user) return null
 
   return {
-    candidateProfile: user.candidateProfile,
+    candidateProfile: user.candidateProfile
+      ? toCandidateProfileData(user.candidateProfile)
+      : null,
     hiringProfile: user.hiringProfile,
     apiKey: user.apiKeys[0]?.key || null,
     onboardingComplete: user.candidateProfile?.onboardingComplete ?? false,

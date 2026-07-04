@@ -7,7 +7,8 @@ export async function getDraft(): Promise<DraftPreview | null> {
 
 export async function persistDraftEdits(
   message: string,
-  subject?: string
+  subject?: string,
+  recipientEmail?: string | null
 ): Promise<DraftPreview | null> {
   const current = await getDraft()
   if (!current || current.status === "loading" || current.status === "idle") {
@@ -15,13 +16,19 @@ export async function persistDraftEdits(
   }
 
   const nextSubject = subject ?? current.subject ?? ""
+  const nextRecipientEmail =
+    recipientEmail !== undefined
+      ? recipientEmail
+      : current.recipientEmail ?? current.emailPayload?.to ?? null
   const updated: DraftPreview = {
     ...current,
     message,
     subject: nextSubject,
+    recipientEmail: nextRecipientEmail,
     emailPayload: current.emailPayload
       ? {
           ...current.emailPayload,
+          to: nextRecipientEmail || current.emailPayload.to,
           body: message,
           subject: nextSubject || current.emailPayload.subject,
         }

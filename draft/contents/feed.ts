@@ -21,6 +21,7 @@ import {
   isPostSent,
   type SentPostsMap,
 } from "~lib/sent-posts"
+import { extractEmailFromText, inferRecipientNameFromEmail } from "~lib/email"
 
 export const config: PlasmoCSConfig = {
   matches: ["*://*.x.com/*", "*://*.linkedin.com/*"],
@@ -485,12 +486,6 @@ async function resolvePostId(
   return platform.getPostId(post) || (await fallbackPostId(text, name, platform.id))
 }
 
-const extractEmail = (text: string) => {
-  const emailRegex = /\b([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/
-  const match = text.match(emailRegex)
-  return match ? match[1] : null
-}
-
 let activeOverlay: HTMLElement | null = null
 let sentPostsCache: SentPostsMap = {}
 let domObserver: MutationObserver | null = null
@@ -865,9 +860,10 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
   button.disabled = true
   button.innerHTML = `<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:rp-spin 0.7s linear infinite"></span> Drafting...`
 
-  const email = extractEmail(text)
+  const email = extractEmailFromText(text)
+  const emailRecipientName = email ? inferRecipientNameFromEmail(email) : null
 
-  const popover = openPopover(button, name)
+  const popover = openPopover(button, emailRecipientName || name)
 
   try {
     const payload = {
@@ -875,6 +871,7 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
       name,
       hasEmail: !!email,
       extractedEmail: email,
+      emailRecipientName,
       postId,
       postUrl,
       platform: platform.id,
@@ -885,7 +882,15 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
     const response = await sendRuntimeMessage<{
       success: boolean
       error?: string
-      data?: { action_mode: string; outreach_payload: { subject_line: string | null; message_content: string } }
+      data?: {
+        detected_name: string
+        is_hiring_relevant: boolean
+        match_score: number
+        match_reason: string
+        fit_highlights: string[]
+        action_mode: string
+        outreach_payload: { subject_line: string | null; message_content: string }
+      }
       draftId?: string
       cached?: boolean
     }>({ type: "DRAFT_PITCH", payload })
@@ -898,16 +903,33 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
       throw new Error(response.error || "Failed to draft pitch")
     }
 
-    const { action_mode, outreach_payload } = response.data!
+    const {
+      action_mode,
+      outreach_payload,
+      detected_name,
+      is_hiring_relevant,
+      match_score,
+      match_reason,
+      fit_highlights,
+    } = response.data!
+    const displayRecipientName = emailRecipientName || name || "Unknown"
     const draft: DraftPreview = {
       status: "ready",
       actionMode: action_mode as "EMAIL" | "DM",
-      recipientName: name || "Unknown",
+      recipientName: displayRecipientName,
       recipientEmail: email,
+      detectedName: detected_name || displayRecipientName,
       recipientHandle: recipientHandle || undefined,
       recipientProfileUrl: recipientProfileUrl || undefined,
       subject: outreach_payload.subject_line,
       message: outreach_payload.message_content,
+      sourceText: text,
+      matchInsight: {
+        score: match_score,
+        reason: match_reason,
+        highlights: fit_highlights,
+        relevant: is_hiring_relevant,
+      },
       postId,
       postUrl: postUrl || undefined,
       platform: platform.id,
@@ -923,7 +945,7 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
               postUrl: postUrl || undefined,
               platform: platform.id,
               draftId: response.draftId,
-              recipientName: name || undefined,
+              recipientName: displayRecipientName,
               recipientHandle: recipientHandle || undefined,
               recipientProfileUrl: recipientProfileUrl || undefined,
             }
@@ -936,7 +958,7 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
       button.innerHTML = "View draft"
       button.disabled = false
       button.dataset.draftReady = "true"
-      button.dataset.recipientName = name
+      button.dataset.recipientName = displayRecipientName
     }
 
     showReadyPopover(button, draft, button)

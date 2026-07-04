@@ -4,7 +4,13 @@ import { motion } from "framer-motion"
 import type { FieldConfig } from "@/lib/onboarding-fields"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
 import { AiInput, AiTextarea } from "./ai-field"
-import { cn } from "@/lib/utils"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 export function QuestionStep({
   config,
@@ -17,6 +23,7 @@ export function QuestionStep({
   onChange: (value: string) => void
   aiFilled?: boolean
 }) {
+  const emptySelectValue = "__empty__"
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -38,22 +45,25 @@ export function QuestionStep({
           autoFocus
         />
       ) : config.inputType === "select" ? (
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={cn(
-            "flex h-12 w-full rounded-lg border border-input bg-card px-3 text-base shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            aiFilled && "ring-1 ring-primary/30 bg-primary/5"
-          )}
-          autoFocus
+        <Select
+          value={value || emptySelectValue}
+          onValueChange={(nextValue) => onChange(nextValue === emptySelectValue ? "" : nextValue)}
         >
-          <option value="">Select...</option>
-          {config.options?.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            className={aiFilled ? "h-12 bg-accent/10 ring-1 ring-ring/30" : "h-12"}
+            autoFocus
+          >
+            <SelectValue placeholder="Select..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={emptySelectValue}>Select...</SelectItem>
+            {config.options?.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
         <AiInput
           aiFilled={aiFilled}

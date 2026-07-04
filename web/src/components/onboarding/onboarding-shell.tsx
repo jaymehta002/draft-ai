@@ -1,7 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Sparkles } from "lucide-react"
+import { DraftAIBrand } from "@/components/draft-ai-logo"
 import { cn } from "@/lib/utils"
 
 export function OnboardingShell({
@@ -27,21 +27,13 @@ export function OnboardingShell({
 
       <div className={cn("flex-1 flex flex-col px-4 sm:px-8 pt-12 pb-32", className)}>
         <div className="max-w-2xl mx-auto w-full mb-10">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground">
-              <Sparkles className="h-4 w-4 text-background" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold tracking-tight">Draft AI</p>
-              <p className="text-xs text-muted-foreground">Profile setup</p>
-            </div>
-          </div>
+          <DraftAIBrand subtitle="Profile setup" />
         </div>
         <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full">{children}</div>
       </div>
 
       {footer && (
-        <div className="fixed bottom-0 left-0 right-0 border-t border-border/60 bg-card/95 backdrop-blur-xl px-4 sm:px-8 py-4">
+        <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-card/95 px-4 py-4 shadow-sm backdrop-blur sm:px-8">
           <div className="max-w-2xl mx-auto">{footer}</div>
         </div>
       )}

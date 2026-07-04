@@ -16,7 +16,7 @@ export function DraftAILogo({
   return (
     <div
       className={cn(
-        "flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 font-bold text-white shadow-md shadow-blue-500/20",
+        "flex items-center justify-center rounded-xl border border-border bg-accent font-bold text-accent-foreground shadow-sm",
         sizes[size],
         className
       )}

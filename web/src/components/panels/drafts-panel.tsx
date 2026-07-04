@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react"
 import { ExpandableTable } from "@/components/ui/expandable-table"
-import { PanelHeader, PanelToolbar, FilterPill } from "@/components/panel-toolbar"
+import { PanelToolbar, FilterPill } from "@/components/panel-toolbar"
 import { PostLink } from "@/components/post-link"
 import { RecipientProfile } from "@/components/recipient-profile"
+import { Badge } from "@/components/ui/badge"
 import { filterBySearch, sortByField } from "@/lib/panel-filters"
 import type { getDraftsData } from "@/app/actions"
-import { cn } from "@/lib/utils"
 
 type DraftItem = Awaited<ReturnType<typeof getDraftsData>>["drafts"][number]
 
@@ -65,16 +65,9 @@ export function DraftsPanel({ drafts }: DraftsPanelProps) {
       header: "Type",
       className: "hidden sm:table-cell",
       cell: (draft: DraftItem) => (
-        <span
-          className={cn(
-            "inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset",
-            draft.actionMode === "EMAIL"
-              ? "bg-blue-50 text-blue-700 ring-blue-600/20"
-              : "bg-violet-50 text-violet-700 ring-violet-600/20"
-          )}
-        >
+        <Badge variant={draft.actionMode === "EMAIL" ? "secondary" : "accent"}>
           {draft.actionMode}
-        </span>
+        </Badge>
       ),
     },
     {
@@ -105,11 +98,6 @@ export function DraftsPanel({ drafts }: DraftsPanelProps) {
 
   return (
     <div>
-      <PanelHeader
-        title="Drafts"
-        description="Unsent outreach only — sent emails move to the Emails tab"
-      />
-
       <PanelToolbar search={search} onSearchChange={setSearch} placeholder="Search drafts..." className="mb-4">
         <FilterPill active={modeFilter === "all"} onClick={() => setModeFilter("all")} count={stats.all}>
           All

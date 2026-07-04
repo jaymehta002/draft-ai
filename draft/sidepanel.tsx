@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, type ReactNode } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { Mail, Copy, Loader2, Check, AlertCircle } from "lucide-react"
 import "./style.css"
 import { DRAFT_STORAGE_KEY, type DraftPreview } from "~lib/draft"
@@ -31,21 +32,30 @@ function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
   )
 }
 
+type SubmissionState = "idle" | "sending" | "sent"
+type StatusTone = "success" | "error" | "info"
+type StatusNote = { tone: StatusTone; text: string }
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
 function SidePanel() {
   const [draft, setDraft] = useState<DraftPreview | null>(null)
   const [message, setMessage] = useState("")
   const [subject, setSubject] = useState("")
-  const [sending, setSending] = useState(false)
+  const [recipientEmail, setRecipientEmail] = useState("")
+  const [submissionState, setSubmissionState] = useState<SubmissionState>("idle")
   const [copied, setCopied] = useState(false)
-  const [statusNote, setStatusNote] = useState<string | null>(null)
+  const [statusNote, setStatusNote] = useState<StatusNote | null>(null)
 
   const dirtyRef = useRef(false)
   const postIdRef = useRef<string | undefined>(undefined)
   const selfPersistRef = useRef(false)
 
-  const debouncedPersist = useDebouncedCallback((msg: string, subj: string) => {
+  const debouncedPersist = useDebouncedCallback((msg: string, subj: string, email: string) => {
     selfPersistRef.current = true
-    persistDraftEdits(msg, subj).finally(() => {
+    persistDraftEdits(msg, subj, email).finally(() => {
       setTimeout(() => {
         selfPersistRef.current = false
       }, 50)
@@ -61,12 +71,14 @@ function SidePanel() {
       dirtyRef.current = false
       setMessage(current.message ?? "")
       setSubject(current.subject ?? "")
+      setRecipientEmail(current.recipientEmail ?? current.emailPayload?.to ?? "")
       return
     }
 
     if (!dirtyRef.current) {
       setMessage(current.message ?? "")
       setSubject(current.subject ?? "")
+      setRecipientEmail(current.recipientEmail ?? current.emailPayload?.to ?? "")
     }
   }, [])
 
@@ -89,9 +101,13 @@ function SidePanel() {
       const current = changes[DRAFT_STORAGE_KEY].newValue as DraftPreview
       setDraft(current)
       syncFromStorage(current)
-      setSending(false)
       setCopied(false)
-      setStatusNote(null)
+      setSubmissionState(current.status === "sent" ? "sent" : "idle")
+      setStatusNote(
+        current.status === "sent"
+          ? { tone: "success", text: "Email delivered successfully." }
+          : null
+      )
     }
 
     chrome.storage.onChanged.addListener(onChange)
@@ -101,24 +117,36 @@ function SidePanel() {
   const handleMessageChange = (value: string) => {
     dirtyRef.current = true
     setMessage(value)
-    debouncedPersist(value, subject)
+    debouncedPersist(value, subject, recipientEmail)
   }
 
   const handleSubjectChange = (value: string) => {
     dirtyRef.current = true
     setSubject(value)
-    debouncedPersist(message, value)
+    debouncedPersist(message, value, recipientEmail)
+  }
+
+  const handleEmailChange = (value: string) => {
+    dirtyRef.current = true
+    setRecipientEmail(value)
+    debouncedPersist(message, subject, value)
   }
 
   const handleSend = async () => {
     if (!draft?.emailPayload) return
-    setSending(true)
+    const normalizedEmail = recipientEmail.trim()
+    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+      setStatusNote({ tone: "error", text: "Enter a valid recipient email before sending." })
+      return
+    }
+
+    setSubmissionState("sending")
     setStatusNote(null)
 
-    await persistDraftEdits(message, subject)
+    await persistDraftEdits(message, subject, normalizedEmail)
 
     const payload = {
-      to: draft.emailPayload.to,
+      to: normalizedEmail,
       subject: subject || draft.emailPayload.subject,
       body: message,
       postId: draft.postId || draft.emailPayload.postId,
@@ -131,9 +159,18 @@ function SidePanel() {
     }
 
     chrome.runtime.sendMessage({ type: "SEND_EMAIL", payload }, (response) => {
-      setSending(false)
+      if (chrome.runtime.lastError) {
+        setSubmissionState("idle")
+        setStatusNote({
+          tone: "error",
+          text: chrome.runtime.lastError.message || "Failed to send email",
+        })
+        return
+      }
+
       if (response?.success) {
-        setStatusNote("Email sent")
+        setSubmissionState("sent")
+        setStatusNote({ tone: "success", text: "Email delivered successfully." })
         dirtyRef.current = false
         chrome.storage.local.set({
           [DRAFT_STORAGE_KEY]: {
@@ -141,18 +178,28 @@ function SidePanel() {
             status: "sent",
             message,
             subject,
+            recipientEmail: normalizedEmail,
+            emailPayload: draft.emailPayload
+              ? {
+                  ...draft.emailPayload,
+                  to: normalizedEmail,
+                  subject: subject || draft.emailPayload.subject,
+                  body: message,
+                }
+              : undefined,
             updatedAt: Date.now(),
           },
         })
       } else {
-        setStatusNote(response?.error || "Failed to send")
+        setSubmissionState("idle")
+        setStatusNote({ tone: "error", text: response?.error || "Failed to send email" })
       }
     })
   }
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message)
-    await persistDraftEdits(message, subject)
+    await persistDraftEdits(message, subject, recipientEmail)
 
     if (draft?.postId) {
       chrome.runtime.sendMessage({
@@ -171,169 +218,407 @@ function SidePanel() {
       })
     }
     setCopied(true)
-    setStatusNote("Copied — paste in their DMs")
+    setStatusNote({ tone: "info", text: "Copied. Paste it directly into their DMs." })
     setTimeout(() => setCopied(false), 2000)
   }
 
   const isLoading = draft?.status === "loading"
   const isReady = draft?.status === "ready" || draft?.status === "sent"
   const isEmail = draft?.actionMode === "EMAIL"
-  const isSent = draft?.status === "sent"
+  const isSent = draft?.status === "sent" || submissionState === "sent"
+  const isSending = submissionState === "sending"
+  const emailIsValid = !isEmail || !recipientEmail.trim() || isValidEmail(recipientEmail)
+  const canSendEmail = Boolean(message.trim() && recipientEmail.trim() && isValidEmail(recipientEmail))
 
   return (
-    <div className="min-h-screen bg-[#fafafa] text-[#171717] font-sans flex flex-col">
-      <header className="px-4 py-3 border-b border-[#e5e5e5] bg-white">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-[15px] font-semibold leading-tight">Draft</h1>
-            <p className="text-xs text-[#737373] truncate mt-0.5">
-              {draft?.recipientName || "Select a post to draft"}
-            </p>
-          </div>
-          {draft?.actionMode && (
-            <span
-              className={cn(
-                "shrink-0 text-[11px] font-medium px-2 py-0.5 rounded",
-                isEmail ? "bg-[#eff6ff] text-[#1d4ed8]" : "bg-[#f5f5f5] text-[#525252]"
-              )}
-            >
-              {isEmail ? "Email" : "DM"}
-            </span>
-          )}
-        </div>
-      </header>
+    <div className="relative min-h-screen bg-[#FDFCFA] text-[#1F2421]">
+      <PanelStyles />
 
-      <main className="flex-1 p-4 overflow-y-auto">
-        {!draft || draft.status === "idle" ? (
-          <EmptyState />
-        ) : isLoading ? (
-          <LoadingState recipientName={draft.recipientName} />
-        ) : draft.status === "error" ? (
-          <ErrorState message={draft.error || "Something went wrong"} />
-        ) : isReady ? (
-          <div className="space-y-4">
-            {isEmail && draft.recipientEmail && (
-              <Field label="To">
-                <p className="text-sm text-[#171717]">{draft.recipientEmail}</p>
-              </Field>
-            )}
-            {isEmail && (
-              <Field label="Subject">
-                <input
-                  value={subject}
-                  onChange={(e) => handleSubjectChange(e.target.value)}
-                  disabled={isSent}
-                  className="field-input"
+      <div className="flex min-h-screen flex-col">
+        <header className="border-b border-[#E7E1D7] bg-white px-6 py-4">
+          <h1 className="text-lg font-semibold text-[#1F2421]">Draft Studio</h1>
+          <p className="text-sm text-[#5C635D] mt-0.5">Craft personalized outreach</p>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-6 pb-28 pt-6">
+          {!draft || draft.status === "idle" ? (
+            <EmptyState />
+          ) : isLoading ? (
+            <LoadingState recipientName={draft.recipientName} />
+          ) : draft.status === "error" ? (
+            <ErrorState message={draft.error || "Something went wrong"} />
+          ) : isReady ? (
+            <div className="space-y-6">
+              {draft.recipientName && (
+                <div className="rounded-lg bg-[#F2E3D6] px-4 py-3 border border-[#E7E1D7]">
+                  <p className="text-sm text-[#5C635D]">
+                    Drafting for <span className="font-semibold text-[#C4612F]">{draft.recipientName}</span>
+                  </p>
+                </div>
+              )}
+
+              {isEmail && (
+                <Field label="Recipient" hint={!emailIsValid && recipientEmail.trim() ? "Enter a valid email address." : undefined} hintTone="error">
+                  <input
+                    type="email"
+                    value={recipientEmail}
+                    onChange={(e) => handleEmailChange(e.target.value)}
+                    disabled={isSent || isSending}
+                    placeholder="name@example.com"
+                    className={cn(
+                      "field-input",
+                      !emailIsValid && recipientEmail.trim() && "field-input--error"
+                    )}
+                  />
+                </Field>
+              )}
+
+              {isEmail && (
+                <Field label="Subject">
+                  <input
+                    value={subject}
+                    onChange={(e) => handleSubjectChange(e.target.value)}
+                    disabled={isSent || isSending}
+                    placeholder="Subject line"
+                    className="field-input"
+                  />
+                </Field>
+              )}
+
+              <Field label="Message">
+                <textarea
+                  value={message}
+                  onChange={(e) => handleMessageChange(e.target.value)}
+                  disabled={isSent || isSending}
+                  rows={16}
+                  placeholder="Write your message..."
+                  className="field-input field-textarea"
                 />
               </Field>
-            )}
-            <Field label="Message">
-              <textarea
-                value={message}
-                onChange={(e) => handleMessageChange(e.target.value)}
-                disabled={isSent}
-                rows={16}
-                className="field-input min-h-[280px] resize-y leading-relaxed"
-              />
-            </Field>
-            {statusNote && (
-              <p
-                className={cn(
-                  "text-sm px-3 py-2 rounded border",
-                  isSent || copied
-                    ? "bg-[#f0fdf4] text-[#166534] border-[#bbf7d0]"
-                    : "bg-[#fef2f2] text-[#991b1b] border-[#fecaca]"
+
+              <AnimatePresence mode="wait">
+                {statusNote && (
+                  <StatusBanner key={statusNote.text} tone={statusNote.tone}>
+                    {statusNote.text}
+                  </StatusBanner>
                 )}
+              </AnimatePresence>
+            </div>
+          ) : null}
+        </main>
+
+        {isReady && (
+          <footer className="border-t border-[#E7E1D7] bg-white px-6 py-4 shadow-lg">
+            {isEmail ? (
+              <button
+                onClick={handleSend}
+                disabled={isSent || isSending || !canSendEmail}
+                className={cn("btn-primary", (isSent || isSending || !canSendEmail) && "btn-disabled")}
               >
-                {statusNote}
-              </p>
+                {isSending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sending
+                  </>
+                ) : isSent ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Sent
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4" />
+                    Send email
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleCopy}
+                disabled={!message.trim()}
+                className={cn("btn-secondary", !message.trim() && "btn-disabled")}
+              >
+                <Copy className="h-4 w-4" />
+                {copied ? "Copied" : "Copy message"}
+              </button>
             )}
-          </div>
-        ) : null}
-      </main>
+          </footer>
+        )}
+      </div>
 
-      {isReady && !isSent && (
-        <footer className="p-4 border-t border-[#e5e5e5] bg-white">
-          {isEmail ? (
-            <button
-              onClick={handleSend}
-              disabled={sending || !message.trim()}
-              className="btn-primary"
-            >
-              {sending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Sending…
-                </>
-              ) : (
-                <>
-                  <Mail className="h-4 w-4" />
-                  Send email
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={handleCopy}
-              disabled={!message.trim()}
-              className="btn-primary bg-[#171717] hover:bg-[#262626]"
-            >
-              <Copy className="h-4 w-4" />
-              {copied ? "Copied" : "Copy message"}
-            </button>
-          )}
-        </footer>
-      )}
-
-      {isSent && (
-        <footer className="p-4 border-t border-[#e5e5e5] bg-[#f0fdf4]">
-          <p className="text-sm text-center text-[#166534] font-medium flex items-center justify-center gap-1.5">
-            <Check className="h-4 w-4" />
-            Sent
-          </p>
-        </footer>
-      )}
+      <AnimatePresence>
+        {isSending && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="absolute inset-0 z-20 flex items-center justify-center bg-[#FDFCFA]/95 backdrop-blur-sm"
+          >
+            <div className="text-center">
+              <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#C4612F]" />
+              <p className="mt-3 text-sm text-[#5C635D]">Sending your email…</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  hintTone = "error",
+  children,
+}: {
+  label: string
+  hint?: string
+  hintTone?: "error"
+  children: ReactNode
+}) {
   return (
     <div>
-      <label className="block text-xs font-medium text-[#737373] mb-1.5">{label}</label>
+      <label className="field-label">{label}</label>
       {children}
+      {hint && <p className={cn("field-hint", hintTone === "error" && "field-hint--error")}>{hint}</p>}
     </div>
   )
 }
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center text-center py-20 px-4">
-      <p className="text-sm text-[#525252] max-w-[220px] leading-relaxed">
-        Click <span className="font-medium text-[#171717]">Draft</span> on a post to generate a message here.
-      </p>
+    <div className="flex min-h-[65vh] items-center justify-center text-center">
+      <div className="max-w-[260px]">
+        <div className="mx-auto h-12 w-12 rounded-full bg-[#F2E3D6] flex items-center justify-center mb-4">
+          <Mail className="h-6 w-6 text-[#C4612F]" />
+        </div>
+        <h2 className="text-xl font-semibold text-[#1F2421] mb-2">
+          No draft in progress
+        </h2>
+        <p className="text-sm leading-relaxed text-[#5C635D]">
+          Click <span className="font-semibold text-[#C4612F]">Draft</span> on any post to open the studio.
+        </p>
+      </div>
     </div>
   )
 }
 
 function LoadingState({ recipientName }: { recipientName: string }) {
   return (
-    <div className="py-16 flex flex-col items-center gap-3">
-      <Loader2 className="h-5 w-5 animate-spin text-[#737373]" />
-      <p className="text-sm text-[#737373]">
-        Writing{recipientName ? ` for ${recipientName}` : ""}…
-      </p>
+    <div className="space-y-6">
+      <div className="rounded-lg bg-[#F2E3D6] px-4 py-3 border border-[#E7E1D7]">
+        <p className="text-sm text-[#5C635D] flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-[#C4612F]" />
+          Writing{recipientName ? ` for ${recipientName}` : ""}…
+        </p>
+      </div>
+
+      <div className="space-y-5">
+        <SkeletonLine className="h-11 w-full" />
+        <SkeletonLine className="h-11 w-2/3" />
+        <SkeletonLine className="h-64 w-full" />
+      </div>
     </div>
   )
 }
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="rounded border border-[#fecaca] bg-[#fef2f2] p-4 text-center">
-      <AlertCircle className="h-5 w-5 text-[#dc2626] mx-auto mb-2" />
-      <p className="text-sm font-medium text-[#991b1b]">Couldn&apos;t generate draft</p>
-      <p className="text-sm text-[#b91c1c] mt-1">{message}</p>
+    <div className="flex min-h-[65vh] items-center justify-center text-center">
+      <div className="max-w-[280px]">
+        <div className="mx-auto h-12 w-12 rounded-full bg-[#FBEAE8] flex items-center justify-center mb-4">
+          <AlertCircle className="h-6 w-6 text-[#A53D30]" />
+        </div>
+        <h2 className="text-xl font-semibold text-[#1F2421] mb-2">
+          Couldn&apos;t build the draft
+        </h2>
+        <p className="text-sm leading-relaxed text-[#874235]">{message}</p>
+      </div>
     </div>
+  )
+}
+
+function StatusBanner({ tone, children }: { tone: StatusTone; children: ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      className={cn("status-banner", `status-banner--${tone}`)}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+function SkeletonLine({ className }: { className?: string }) {
+  return <div className={cn("panel-shimmer rounded-lg bg-[#E7E1D7]", className)} />
+}
+
+function PanelStyles() {
+  return (
+    <style>{`
+      .field-label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #5C635D;
+      }
+
+      .field-input {
+        width: 100%;
+        border: 1px solid #E7E1D7;
+        border-radius: 8px;
+        background: #FFFFFF;
+        padding: 10px 14px;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #1F2421;
+        outline: none;
+        transition: all 0.15s ease;
+      }
+
+      .field-input::placeholder {
+        color: #9CA3A0;
+      }
+
+      .field-input:focus {
+        border-color: #C4612F;
+        box-shadow: 0 0 0 3px rgba(196, 97, 47, 0.1);
+      }
+
+      .field-input:disabled {
+        color: #9CA3A0;
+        background: #F7F4EF;
+        border-color: #E7E1D7;
+        cursor: not-allowed;
+      }
+
+      .field-input--error {
+        border-color: #A53D30;
+      }
+
+      .field-input--error:focus {
+        box-shadow: 0 0 0 3px rgba(165, 61, 48, 0.1);
+      }
+
+      .field-textarea {
+        resize: vertical;
+        min-height: 280px;
+      }
+
+      .field-hint {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #5C635D;
+      }
+
+      .field-hint--error {
+        color: #A53D30;
+      }
+
+      .btn-primary {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 8px;
+        background: #C4612F;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #FFFFFF;
+        transition: background 0.15s ease;
+        border: none;
+        cursor: pointer;
+      }
+
+      .btn-primary:hover:not(.btn-disabled) {
+        background: #A94E22;
+      }
+
+      .btn-secondary {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: 1px solid #E7E1D7;
+        border-radius: 8px;
+        background: #FFFFFF;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #1F2421;
+        transition: all 0.15s ease;
+        cursor: pointer;
+      }
+
+      .btn-secondary:hover:not(.btn-disabled) {
+        background: #F7F4EF;
+        border-color: #C4612F;
+      }
+
+      .btn-disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .status-banner {
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .status-banner--success {
+        background: #EAF5EF;
+        color: #1F7A54;
+        border: 1px solid #C3E6CD;
+      }
+
+      .status-banner--error {
+        background: #FBEAE8;
+        color: #A53D30;
+        border: 1px solid #F5C6C0;
+      }
+
+      .status-banner--info {
+        background: #EDF1FA;
+        color: #3A5BA0;
+        border: 1px solid #C8D5F0;
+      }
+
+      .panel-shimmer {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .panel-shimmer::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(90deg, transparent, rgba(196, 97, 47, 0.08), transparent);
+        animation: panel-shimmer 1.6s ease-in-out infinite;
+      }
+
+      @keyframes panel-shimmer {
+        100% { transform: translateX(100%); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .panel-shimmer::after {
+          animation: none;
+        }
+      }
+    `}</style>
   )
 }
 

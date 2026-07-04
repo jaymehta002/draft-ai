@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { ExpandableTable } from "@/components/ui/expandable-table"
-import { PanelHeader, PanelToolbar, FilterPill } from "@/components/panel-toolbar"
+import { PanelToolbar, FilterPill } from "@/components/panel-toolbar"
 import { PostLink } from "@/components/post-link"
 import { RecipientProfile } from "@/components/recipient-profile"
 import { filterBySearch, sortByField } from "@/lib/panel-filters"
@@ -75,8 +75,6 @@ export function DMsPanel({ dms }: DMsPanelProps) {
 
   return (
     <div>
-      <PanelHeader title="DMs" description="Copied direct messages from the extension" />
-
       <PanelToolbar search={search} onSearchChange={setSearch} placeholder="Search DMs..." className="mb-4">
         <FilterPill active={platformFilter === "all"} onClick={() => setPlatformFilter("all")} count={dms.length}>
           All

@@ -27,14 +27,17 @@ import {
   profileToFormData,
 } from "@/lib/candidate-profile"
 import { AppSidebar, MobileMenuButton, type DashboardSection } from "@/components/app-sidebar"
+import { AccountMenu } from "@/components/account-menu"
 import { ProfileCard } from "@/components/profile-card"
 import { ProfileEditor } from "@/components/profile/profile-editor"
 import { DraftsPanel } from "@/components/panels/drafts-panel"
 import { EmailsPanel } from "@/components/panels/emails-panel"
 import { DMsPanel } from "@/components/panels/dms-panel"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { FadeIn } from "@/components/motion"
 
 type DashboardData = NonNullable<Awaited<ReturnType<typeof getDashboardData>>>
@@ -47,29 +50,20 @@ type DMsData = Awaited<ReturnType<typeof getDMsData>>
 function rawToProfileData(profile: NonNullable<CandidateProfile>): CandidateProfileData {
   const structured = migrateLegacyToStructured(profile)
   return syncLegacyFields({
-    fullName: profile.fullName ?? "",
-    phone: profile.phone ?? "",
-    location: profile.location ?? "",
-    linkedinUrl: profile.linkedinUrl ?? "",
-    portfolioUrl: profile.portfolioUrl ?? "",
-    githubUrl: profile.githubUrl ?? "",
-    currentTitle: profile.currentTitle ?? "",
-    yearsExperience: profile.yearsExperience?.toString() ?? "",
-    summary: profile.summary ?? "",
-    workExperience: profile.workExperience ?? "",
+    ...profile,
     workExperiences: structured.workExperiences,
     projects: structured.projects,
     certificates: structured.certificates,
-    education: profile.education ?? "",
-    skills: profile.skills ?? "",
-    certifications: profile.certifications ?? "",
-    resumeFileName: profile.resumeFileName ?? "",
-    resumeContent: profile.resumeContent ?? "",
-    desiredRoles: profile.desiredRoles ?? "",
-    salaryExpectation: profile.salaryExpectation ?? "",
-    workPreference: profile.workPreference ?? "",
-    availability: profile.availability ?? "",
   })
+}
+
+const SECTION_LABELS: Record<DashboardSection, string> = {
+  analytics: "Overview",
+  drafts: "Drafts",
+  emails: "Inbox",
+  dms: "Messages",
+  profile: "Account",
+  extension: "Integrations",
 }
 
 export default function Dashboard() {
@@ -80,6 +74,7 @@ export default function Dashboard() {
   const [candidateProfile, setCandidateProfile] = useState<CandidateProfile>(null)
   const [profileData, setProfileData] = useState<CandidateProfileData | null>(null)
   const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [draftsData, setDraftsData] = useState<DraftsData | null>(null)
@@ -126,6 +121,7 @@ export default function Dashboard() {
   const handleSaveProfile = async () => {
     if (!profileData) return
     setProfileSaving(true)
+    setProfileError(null)
     try {
       await saveCandidateProfile(profileToFormData(syncLegacyFields(profileData)), true)
       setCandidateProfile((prev) =>
@@ -137,9 +133,18 @@ export default function Dashboard() {
             }
           : prev
       )
+    } catch (error) {
+      setProfileError(
+        error instanceof Error ? error.message : "Failed to save profile"
+      )
     } finally {
       setProfileSaving(false)
     }
+  }
+
+  const handleProfileChange = (nextProfile: CandidateProfileData) => {
+    setProfileError(null)
+    setProfileData(nextProfile)
   }
 
   const handleGenerateKey = async () => {
@@ -160,10 +165,18 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading Draft AI...</p>
+      <div className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-7xl gap-6">
+          <Skeleton className="hidden h-[calc(100vh-4rem)] w-20 rounded-2xl lg:block" />
+          <div className="flex-1 space-y-6">
+            <Skeleton className="h-16 w-full rounded-2xl" />
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} className="h-36 rounded-2xl" />
+              ))}
+            </div>
+            <Skeleton className="h-72 rounded-2xl" />
+          </div>
         </div>
       </div>
     )
@@ -171,25 +184,25 @@ export default function Dashboard() {
 
   if (status === "unauthenticated") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <FadeIn className="max-w-md w-full">
-          <Card className="border-border/60 shadow-lg">
-            <CardHeader className="text-center space-y-4 pt-10">
+      <div className="min-h-screen bg-background px-6 py-10">
+        <FadeIn className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-md items-center">
+          <Card className="w-full border-border shadow-lg">
+            <CardHeader className="space-y-6 pt-12 pb-8 text-center">
               <div className="flex justify-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-foreground">
-                  <Sparkles className="h-6 w-6 text-background" />
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent text-accent-foreground shadow-md">
+                  <Sparkles className="h-8 w-8 text-accent-foreground" strokeWidth={2.5} />
                 </div>
               </div>
               <div>
-                <CardTitle className="text-2xl tracking-tight">Draft AI</CardTitle>
-                <CardDescription className="text-base mt-2">
-                  Draft personalized outreach on X and LinkedIn
+                <CardTitle className="font-serif text-4xl tracking-tight">Draft AI</CardTitle>
+                <CardDescription className="mt-3 text-base leading-relaxed">
+                  AI-powered outreach drafts for X and LinkedIn
                 </CardDescription>
               </div>
             </CardHeader>
-            <CardContent className="pb-10">
-              <Button onClick={() => signIn("google")} className="w-full h-11 rounded-full" size="lg">
-                <Sparkles className="h-4 w-4" />
+            <CardContent className="pb-12 px-8">
+              <Button onClick={() => signIn("google")} className="w-full" size="lg" variant="accent">
+                <Sparkles className="h-5 w-5" />
                 Continue with Google
               </Button>
             </CardContent>
@@ -217,13 +230,13 @@ export default function Dashboard() {
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-40 border-b border-border/60 bg-card/80 backdrop-blur-xl">
-          <div className="px-4 sm:px-8 h-14 flex items-center justify-between gap-4">
+        <header className="sticky top-0 z-40 border-b border-border bg-card/95 shadow-sm backdrop-blur">
+          <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
               <MobileMenuButton onClick={() => setMobileNavOpen(true)} />
-              <h1 className="text-sm font-semibold tracking-tight capitalize lg:hidden">{section}</h1>
+              <h1 className="text-base font-semibold tracking-tight">{SECTION_LABELS[section]}</h1>
             </div>
-            <ProfileCard
+            <AccountMenu
               name={candidateProfile?.fullName || session?.user?.name}
               email={session?.user?.email}
               image={session?.user?.image}
@@ -233,15 +246,10 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-8 overflow-auto max-w-6xl w-full">
+        <main className="flex-1 overflow-auto bg-background">
           {section === "analytics" && analytics && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight">Overview</h2>
-                <p className="text-sm text-muted-foreground mt-1">Your outreach activity at a glance</p>
-              </div>
-
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <StatCard icon={Sparkles} label="Pending drafts" value={draftCount} />
                 <StatCard icon={Mail} label="Emails sent" value={analytics.emailsSent} />
                 <StatCard icon={Copy} label="DMs copied" value={analytics.dmsCopied} />
@@ -253,49 +261,49 @@ export default function Dashboard() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Card className="border-border/60 shadow-sm">
-                  <CardHeader className="pb-2">
-                    <CardDescription>This week</CardDescription>
-                    <CardTitle className="text-3xl font-semibold tracking-tight">{analytics.draftsThisWeek}</CardTitle>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <Card className="border-border shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                  <CardHeader className="pb-3">
+                    <CardDescription className="text-xs font-medium uppercase tracking-wider">This week</CardDescription>
+                    <CardTitle className="text-4xl font-semibold tracking-tight tabular-nums">{analytics.draftsThisWeek}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-xs text-muted-foreground">new drafts generated</p>
+                    <p className="text-sm text-muted-foreground">new drafts generated</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 shadow-sm">
-                  <CardHeader className="pb-2">
-                    <CardDescription>Email pipeline</CardDescription>
+                <Card className="border-border shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                  <CardHeader className="pb-3">
+                    <CardDescription className="text-xs font-medium uppercase tracking-wider">Email pipeline</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-2.5">
-                    <div className="flex justify-between text-sm">
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-muted/40">
                       <span className="text-muted-foreground">Active</span>
-                      <span className="font-medium tabular-nums">{emailsData?.stats.sent ?? 0}</span>
+                      <Badge variant="secondary" className="tabular-nums">{emailsData?.stats.sent ?? 0}</Badge>
                     </div>
-                    <div className="flex justify-between text-sm">
+                    <div className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-muted/40">
                       <span className="text-muted-foreground">Aged</span>
-                      <span className="font-medium tabular-nums text-amber-600">{emailsData?.stats.aged ?? 0}</span>
+                      <Badge variant="warning" className="tabular-nums">{emailsData?.stats.aged ?? 0}</Badge>
                     </div>
-                    <div className="flex justify-between text-sm">
+                    <div className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-muted/40">
                       <span className="text-muted-foreground">Responded</span>
-                      <span className="font-medium tabular-nums text-emerald-600">{emailsData?.stats.responded ?? 0}</span>
+                      <Badge variant="accent" className="tabular-nums">{emailsData?.stats.responded ?? 0}</Badge>
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 shadow-sm">
-                  <CardHeader className="pb-2">
-                    <CardDescription className="flex items-center gap-1.5">
+                <Card className="border-border shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                  <CardHeader className="pb-3">
+                    <CardDescription className="text-xs font-medium uppercase tracking-wider flex items-center gap-2">
                       <TrendingUp className="h-3.5 w-3.5" /> By platform
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-2">
+                  <CardContent className="space-y-2.5">
                     {Object.entries(analytics.platformBreakdown).length === 0 ? (
-                      <p className="text-xs text-muted-foreground">No outreach yet</p>
+                      <p className="text-sm text-muted-foreground py-4 text-center">No outreach yet</p>
                     ) : (
                       Object.entries(analytics.platformBreakdown).map(([platform, count]) => (
-                        <div key={platform} className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">{platform}</span>
-                          <span className="font-medium tabular-nums">{count}</span>
+                        <div key={platform} className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-muted/40">
+                          <span className="text-muted-foreground font-medium">{platform}</span>
+                          <span className="font-semibold tabular-nums text-foreground">{count}</span>
                         </div>
                       ))
                     )}
@@ -303,21 +311,21 @@ export default function Dashboard() {
                 </Card>
               </div>
 
-              <Card className="border-border/60 shadow-sm">
+              <Card className="border-border shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-base font-semibold">Quick actions</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Quick actions</CardTitle>
                   <CardDescription>
                     {draftCount} pending draft{draftCount !== 1 ? "s" : ""} · {analytics.emailsSent} emails · {analytics.dmsCopied} DMs
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" className="rounded-full" onClick={() => setSection("drafts")}>
+                <CardContent className="flex flex-wrap gap-3">
+                  <Button variant="outline" size="default" className="font-semibold" onClick={() => setSection("drafts")}>
                     View drafts
                   </Button>
-                  <Button variant="outline" size="sm" className="rounded-full" onClick={() => setSection("emails")}>
+                  <Button variant="outline" size="default" className="font-semibold" onClick={() => setSection("emails")}>
                     View emails
                   </Button>
-                  <Button variant="outline" size="sm" className="rounded-full" onClick={() => setSection("dms")}>
+                  <Button variant="outline" size="default" className="font-semibold" onClick={() => setSection("dms")}>
                     View DMs
                   </Button>
                 </CardContent>
@@ -326,56 +334,73 @@ export default function Dashboard() {
           )}
 
           {section === "drafts" && draftsData && (
-            <DraftsPanel drafts={draftsData.drafts} />
+            <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+              <DraftsPanel drafts={draftsData.drafts} />
+            </div>
           )}
 
           {section === "emails" && emailsData && (
-            <EmailsPanel emails={emailsData.emails} onRefresh={refreshEmails} />
+            <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+              <EmailsPanel emails={emailsData.emails} onRefresh={refreshEmails} />
+            </div>
           )}
 
           {section === "dms" && dmsData && (
-            <DMsPanel dms={dmsData.dms} />
+            <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+              <DMsPanel dms={dmsData.dms} />
+            </div>
           )}
 
           {section === "profile" && profile && (
-            <FadeIn>
-              <Card className="border-border/60 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-xl tracking-tight">Your profile</CardTitle>
-                  <CardDescription>
-                    Structured experience, projects, and certificates power your outreach drafts
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ProfileEditor
-                    profile={profile}
-                    onChange={setProfileData}
-                    onSave={handleSaveProfile}
-                    saving={profileSaving}
-                  />
-                </CardContent>
-              </Card>
+            <FadeIn className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+              <div className="space-y-6">
+                <ProfileCard
+                  name={profile.fullName || session?.user?.name || "Draft AI user"}
+                  title={profile.currentTitle || "Candidate profile"}
+                  avatarUrl={session?.user?.image}
+                  bio={profile.summary || "Add a short summary so your outreach drafts have stronger context."}
+                  stats={[
+                    { label: "Years", value: profile.yearsExperience || "0" },
+                    {
+                      label: "Skills",
+                      value: profile.skills
+                        .split(",")
+                        .map((skill) => skill.trim())
+                        .filter(Boolean).length,
+                    },
+                    { label: "Projects", value: profile.projects.length },
+                    { label: "Certificates", value: profile.certificates.length },
+                  ]}
+                  actions={[
+                    ...(profile.linkedinUrl ? [{ label: "LinkedIn", href: profile.linkedinUrl, variant: "outline" as const }] : []),
+                    ...(profile.portfolioUrl ? [{ label: "Portfolio", href: profile.portfolioUrl, variant: "secondary" as const }] : []),
+                  ]}
+                />
+                <ProfileEditor
+                  profile={profile}
+                  onChange={handleProfileChange}
+                  onSave={handleSaveProfile}
+                  saving={profileSaving}
+                  error={profileError}
+                />
+              </div>
             </FadeIn>
           )}
 
           {section === "extension" && (
-            <FadeIn>
-              <Card className="max-w-md border-border/60 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Chrome extension</CardTitle>
-                  <CardDescription>Connect Draft AI to draft on X and LinkedIn</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Button className="w-full" asChild>
+            <FadeIn className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 lg:px-8">
+              <Card className="border-border shadow-sm">
+                <CardContent className="space-y-6 p-6">
+                  <Button className="w-full" size="lg" variant="accent" asChild>
                     <a href="/extension/connect">
-                      <ExternalLink className="h-4 w-4" />
+                      <ExternalLink className="h-5 w-5" />
                       Connect extension
                     </a>
                   </Button>
                   {apiKey ? (
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">API key</label>
-                      <div className="flex gap-2">
+                    <div className="space-y-3">
+                      <label className="text-sm font-semibold text-foreground">API key</label>
+                      <div className="flex gap-3">
                         <Input readOnly value={apiKey} className="font-mono text-xs" />
                         <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(apiKey)}>
                           <Copy className="h-4 w-4" />
@@ -385,7 +410,7 @@ export default function Dashboard() {
                   ) : (
                     <p className="text-sm text-muted-foreground italic">No API key yet</p>
                   )}
-                  <Button variant="outline" className="w-full" onClick={handleGenerateKey}>
+                  <Button variant="outline" className="w-full" size="lg" onClick={handleGenerateKey}>
                     {apiKey ? "Regenerate key" : "Generate API key"}
                   </Button>
                 </CardContent>
@@ -410,17 +435,19 @@ function StatCard({
   sub?: string
 }) {
   return (
-    <Card className="border-border/60 shadow-sm">
-      <CardHeader className="pb-2 pt-5">
-        <div className="flex items-center justify-between">
-          <CardDescription className="text-xs">{label}</CardDescription>
-          <Icon className="h-4 w-4 text-muted-foreground" />
+    <Card className="group border-border shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+      <CardHeader className="pb-3 pt-6">
+        <div className="flex items-center justify-between mb-3">
+          <CardDescription className="text-xs font-medium uppercase tracking-wider">{label}</CardDescription>
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/12 transition-colors group-hover:bg-accent/18">
+            <Icon className="h-4 w-4 text-accent" />
+          </div>
         </div>
-        <CardTitle className="text-3xl font-semibold tracking-tight tabular-nums">{value}</CardTitle>
+        <CardTitle className="text-4xl font-semibold tracking-tight tabular-nums transition-colors group-hover:text-accent">{value}</CardTitle>
       </CardHeader>
       {sub && (
-        <CardContent className="pb-5">
-          <p className="text-[11px] text-muted-foreground">{sub}</p>
+        <CardContent className="pb-6">
+          <p className="text-xs text-muted-foreground">{sub}</p>
         </CardContent>
       )}
     </Card>

@@ -48,15 +48,15 @@ export function FilterPill({ active, onClick, children, count }: FilterPillProps
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-medium transition-all",
+        "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.98]",
         active
-          ? "bg-foreground text-background shadow-sm"
-          : "bg-card text-muted-foreground border border-border/60 hover:text-foreground hover:border-border"
+          ? "border border-transparent bg-primary text-primary-foreground shadow-sm"
+          : "border border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground"
       )}
     >
       {children}
       {count != null && (
-        <span className={cn("tabular-nums", active ? "text-background/70" : "text-muted-foreground")}>
+        <span className={cn("tabular-nums", active ? "text-primary-foreground/75" : "text-muted-foreground")}>
           {count}
         </span>
       )}

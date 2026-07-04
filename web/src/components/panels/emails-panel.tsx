@@ -3,14 +3,14 @@
 import { useMemo, useState } from "react"
 import { ExternalLink } from "lucide-react"
 import { ExpandableTable } from "@/components/ui/expandable-table"
-import { PanelHeader, PanelToolbar, FilterPill } from "@/components/panel-toolbar"
+import { PanelToolbar, FilterPill } from "@/components/panel-toolbar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { PostLink } from "@/components/post-link"
 import { filterBySearch, sortByField } from "@/lib/panel-filters"
 import { EMAIL_STATE_LABELS, type EmailLifecycleState } from "@/lib/outreach-state"
 import { markEmailResponded } from "@/app/actions"
 import type { getEmailsData } from "@/app/actions"
-import { cn } from "@/lib/utils"
 
 type EmailItem = Awaited<ReturnType<typeof getEmailsData>>["emails"][number]
 
@@ -35,16 +35,12 @@ function formatRelative(iso: string) {
 
 function StateBadge({ state }: { state: EmailLifecycleState | null }) {
   if (!state) return null
-  const styles: Record<EmailLifecycleState, string> = {
-    SENT: "bg-blue-50 text-blue-700 ring-blue-600/20",
-    AGED: "bg-amber-50 text-amber-700 ring-amber-600/20",
-    RESPONDED: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  const variants: Record<EmailLifecycleState, React.ComponentProps<typeof Badge>["variant"]> = {
+    SENT: "secondary",
+    AGED: "warning",
+    RESPONDED: "accent",
   }
-  return (
-    <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset", styles[state])}>
-      {EMAIL_STATE_LABELS[state]}
-    </span>
-  )
+  return <Badge variant={variants[state]}>{EMAIL_STATE_LABELS[state]}</Badge>
 }
 
 type EmailsPanelProps = {
@@ -157,11 +153,6 @@ export function EmailsPanel({ emails, onRefresh }: EmailsPanelProps) {
 
   return (
     <div>
-      <PanelHeader
-        title="Emails"
-        description="Sent outreach moves here automatically from drafts"
-      />
-
       <PanelToolbar search={search} onSearchChange={setSearch} placeholder="Search emails..." className="mb-4">
         <FilterPill active={stateFilter === "all"} onClick={() => setStateFilter("all")} count={stats.all}>
           All
@@ -225,7 +216,7 @@ export function EmailsPanel({ emails, onRefresh }: EmailsPanelProps) {
                     href={email.recipientProfileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary underline-offset-4 transition-colors duration-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <ExternalLink className="h-3 w-3" />

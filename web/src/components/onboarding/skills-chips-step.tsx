@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
 import { X, Plus, Loader2, Sparkles } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
@@ -67,8 +68,7 @@ export function SkillsChipsStep({
                 type="button"
                 onClick={() => toggleSkill(skill)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
-                  "bg-primary/10 text-primary ring-1 ring-primary/30"
+                  "inline-flex items-center gap-1.5 rounded-full border border-accent/20 bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent-foreground transition-[background-color,color,border-color,box-shadow] duration-200 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 )}
               >
                 <Sparkles className="h-3 w-3" />
@@ -90,8 +90,7 @@ export function SkillsChipsStep({
                     type="button"
                     onClick={() => toggleSkill(skill)}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm transition-colors",
-                      "bg-muted text-muted-foreground hover:bg-muted/80 border border-dashed border-border"
+                      "inline-flex items-center gap-1 rounded-full border border-dashed border-border bg-card px-3 py-1.5 text-sm text-muted-foreground transition-[background-color,color,border-color] duration-200 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     )}
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -110,13 +109,9 @@ export function SkillsChipsStep({
               placeholder="Add a skill..."
               className="h-12 text-base"
             />
-            <button
-              type="button"
-              onClick={addCustom}
-              className="shrink-0 h-12 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
-            >
+            <Button type="button" onClick={addCustom} size="lg" className="shrink-0">
               Add
-            </button>
+            </Button>
           </div>
         </>
       )}

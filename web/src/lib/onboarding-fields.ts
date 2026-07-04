@@ -1,5 +1,4 @@
 import type { CandidateProfileData } from "@/lib/candidate-profile"
-import { migrateLegacyToStructured } from "@/lib/candidate-profile"
 
 export type FieldInputType = "text" | "textarea" | "number" | "select" | "url"
 
@@ -122,6 +121,11 @@ export const FIELD_LABELS: Record<keyof CandidateProfileData, string> = {
   skills: "Skills",
   certifications: "Certifications",
   resumeFileName: "Resume file",
+  resumeMimeType: "Resume MIME type",
+  resumeStorageKey: "Resume storage key",
+  resumeFileUrl: "Resume file URL",
+  resumeFileSize: "Resume file size",
+  resumeFileData: "Resume file data",
   resumeContent: "Resume",
   desiredRoles: "Desired roles",
   salaryExpectation: "Salary expectation",

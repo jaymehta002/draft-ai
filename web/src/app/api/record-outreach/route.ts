@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { incrementSentStats } from "@/lib/user-stats"
 
 export async function POST(req: Request) {
   try {
@@ -38,6 +39,9 @@ export async function POST(req: Request) {
         status: "COPIED",
       },
     })
+
+    // Increment precomputed stats
+    await incrementSentStats(apiKey.userId)
 
     return NextResponse.json({ success: true, sentId: sent.id })
   } catch (error: unknown) {

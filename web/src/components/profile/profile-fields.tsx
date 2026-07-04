@@ -1,4 +1,11 @@
 import { cn } from "@/lib/utils"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 export function FormField({
   label,
@@ -35,39 +42,50 @@ export function MonthYearSelect({
   monthLabel?: string
   yearLabel?: string
 }) {
+  const emptyValue = "__empty__"
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 40 }, (_, i) => String(currentYear - i))
 
   return (
     <div className="grid grid-cols-2 gap-3">
       <FormField label={monthLabel}>
-        <select
-          value={month}
-          onChange={(e) => onMonthChange(e.target.value)}
-          className="w-full h-9 rounded-lg border border-border/60 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+        <Select
+          value={month || emptyValue}
+          onValueChange={(value) => onMonthChange(value === emptyValue ? "" : value)}
         >
-          <option value="">Month</option>
-          {Array.from({ length: 12 }, (_, i) => {
-            const m = String(i + 1).padStart(2, "0")
-            return (
-              <option key={m} value={m}>
-                {new Date(2000, i).toLocaleString("en", { month: "short" })}
-              </option>
-            )
-          })}
-        </select>
+          <SelectTrigger className="h-9">
+            <SelectValue placeholder="Month" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={emptyValue}>Month</SelectItem>
+            {Array.from({ length: 12 }, (_, i) => {
+              const m = String(i + 1).padStart(2, "0")
+              return (
+                <SelectItem key={m} value={m}>
+                  {new Date(2000, i).toLocaleString("en", { month: "short" })}
+                </SelectItem>
+              )
+            })}
+          </SelectContent>
+        </Select>
       </FormField>
       <FormField label={yearLabel}>
-        <select
-          value={year}
-          onChange={(e) => onYearChange(e.target.value)}
-          className="w-full h-9 rounded-lg border border-border/60 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+        <Select
+          value={year || emptyValue}
+          onValueChange={(value) => onYearChange(value === emptyValue ? "" : value)}
         >
-          <option value="">Year</option>
-          {years.map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
+          <SelectTrigger className="h-9">
+            <SelectValue placeholder="Year" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={emptyValue}>Year</SelectItem>
+            {years.map((y) => (
+              <SelectItem key={y} value={y}>
+                {y}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </FormField>
     </div>
   )
@@ -97,7 +115,7 @@ export function EntryCard({
           <button
             type="button"
             onClick={onRemove}
-            className="text-xs text-muted-foreground hover:text-destructive transition-colors shrink-0"
+            className="shrink-0 text-xs text-muted-foreground transition-colors duration-200 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             Remove
           </button>

@@ -9,9 +9,16 @@ import { ProjectsEditor } from "@/components/profile/projects-editor"
 import { CertificatesEditor } from "@/components/profile/certificates-editor"
 import { FormField } from "@/components/profile/profile-fields"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 
 type ProfileSection = "basics" | "work" | "projects" | "certificates" | "links" | "preferences"
 
@@ -29,9 +36,11 @@ type ProfileEditorProps = {
   onChange: (profile: CandidateProfileData) => void
   onSave: () => Promise<void>
   saving?: boolean
+  error?: string | null
 }
 
-export function ProfileEditor({ profile, onChange, onSave, saving }: ProfileEditorProps) {
+export function ProfileEditor({ profile, onChange, onSave, saving, error }: ProfileEditorProps) {
+  const emptySelectValue = "__empty__"
   const [section, setSection] = useState<ProfileSection>("basics")
   const [saved, setSaved] = useState(false)
 
@@ -48,24 +57,25 @@ export function ProfileEditor({ profile, onChange, onSave, saving }: ProfileEdit
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
-      <nav className="lg:w-48 shrink-0 flex lg:flex-col gap-1 overflow-x-auto pb-2 lg:pb-0">
-        {SECTIONS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setSection(id)}
-            className={cn(
-              "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors",
-              section === id
-                ? "bg-foreground text-background"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
-      </nav>
+      <Tabs
+        value={section}
+        onValueChange={(value) => setSection(value as ProfileSection)}
+        orientation="vertical"
+        className="lg:w-52 shrink-0"
+      >
+        <TabsList className="flex h-auto w-full flex-row overflow-x-auto rounded-xl border border-border bg-muted/50 p-1 lg:flex-col lg:items-stretch">
+          {SECTIONS.map(({ id, label, icon: Icon }) => (
+            <TabsTrigger
+              key={id}
+              value={id}
+              className="justify-start gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm"
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <div className="flex-1 min-w-0 space-y-6">
         {section === "basics" && (
@@ -166,17 +176,21 @@ export function ProfileEditor({ profile, onChange, onSave, saving }: ProfileEdit
                 <Input value={profile.salaryExpectation} onChange={(e) => update({ salaryExpectation: e.target.value })} className="h-9" />
               </FormField>
               <FormField label="Work preference">
-                <select
-                  value={profile.workPreference}
-                  onChange={(e) => update({ workPreference: e.target.value })}
-                  className="w-full h-9 rounded-lg border border-border/60 bg-background px-3 text-sm"
+                <Select
+                  value={profile.workPreference || emptySelectValue}
+                  onValueChange={(value) => update({ workPreference: value === emptySelectValue ? "" : value })}
                 >
-                  <option value="">Select...</option>
-                  <option value="remote">Remote</option>
-                  <option value="hybrid">Hybrid</option>
-                  <option value="onsite">On-site</option>
-                  <option value="flexible">Flexible</option>
-                </select>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={emptySelectValue}>Select...</SelectItem>
+                    <SelectItem value="remote">Remote</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                    <SelectItem value="onsite">On-site</SelectItem>
+                    <SelectItem value="flexible">Flexible</SelectItem>
+                  </SelectContent>
+                </Select>
               </FormField>
               <FormField label="Availability">
                 <Input value={profile.availability} onChange={(e) => update({ availability: e.target.value })} className="h-9" />
@@ -185,9 +199,10 @@ export function ProfileEditor({ profile, onChange, onSave, saving }: ProfileEdit
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/60">
-          {saved && <span className="text-xs text-emerald-600">Saved</span>}
-          <Button onClick={handleSave} disabled={saving} className="rounded-full">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
+          {error ? <span className="mr-auto text-sm text-destructive">{error}</span> : null}
+          {saved && <span className="text-xs text-muted-foreground">Saved</span>}
+          <Button onClick={handleSave} disabled={saving}>
             <Save className="h-4 w-4" />
             {saving ? "Saving..." : "Save profile"}
           </Button>

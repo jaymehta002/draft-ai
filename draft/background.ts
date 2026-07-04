@@ -157,16 +157,18 @@ async function handleDraftPitchFlow(payload: {
   name: string
   hasEmail: boolean
   extractedEmail: string | null
+  emailRecipientName?: string | null
   postId: string
   postUrl?: string | null
   platform: string
   recipientHandle?: string | null
   recipientProfileUrl?: string | null
 }, tabId?: number) {
+  const recipientName = payload.emailRecipientName || payload.name || "Unknown"
   const loadingDraft: DraftPreview = {
     status: "loading",
     actionMode: payload.hasEmail ? "EMAIL" : "DM",
-    recipientName: payload.name || "Unknown",
+    recipientName,
     recipientEmail: payload.extractedEmail,
     recipientHandle: payload.recipientHandle || undefined,
     recipientProfileUrl: payload.recipientProfileUrl || undefined,
@@ -174,6 +176,7 @@ async function handleDraftPitchFlow(payload: {
     postUrl: payload.postUrl || undefined,
     platform: payload.platform,
     message: "",
+    sourceText: payload.text,
     updatedAt: Date.now(),
   }
 
@@ -191,18 +194,34 @@ async function handleDraftPitchFlow(payload: {
     return result
   }
 
-  const { action_mode, outreach_payload } = result.data
+  const {
+    action_mode,
+    outreach_payload,
+    detected_name,
+    is_hiring_relevant,
+    match_score,
+    match_reason,
+    fit_highlights,
+  } = result.data
   const { subject_line, message_content } = outreach_payload
 
   const readyDraft: DraftPreview = {
     status: "ready",
     actionMode: action_mode,
-    recipientName: payload.name || "Unknown",
+    recipientName,
     recipientEmail: payload.extractedEmail,
+    detectedName: detected_name || recipientName,
     recipientHandle: payload.recipientHandle || undefined,
     recipientProfileUrl: payload.recipientProfileUrl || undefined,
     subject: subject_line,
     message: message_content,
+    sourceText: payload.text,
+    matchInsight: {
+      score: match_score,
+      reason: match_reason,
+      highlights: fit_highlights,
+      relevant: is_hiring_relevant,
+    },
     postId: payload.postId,
     postUrl: payload.postUrl || undefined,
     platform: payload.platform,
@@ -218,7 +237,7 @@ async function handleDraftPitchFlow(payload: {
             postUrl: payload.postUrl || undefined,
             platform: payload.platform,
             draftId: result.draftId,
-            recipientName: payload.name || undefined,
+            recipientName,
             recipientHandle: payload.recipientHandle || undefined,
             recipientProfileUrl: payload.recipientProfileUrl || undefined,
           }
