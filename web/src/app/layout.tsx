@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Inter, Merriweather, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import { Providers } from "@/components/Providers"
+import { siteConfig, siteUrl } from "@/lib/site"
 
 const fontSans = Inter({
   subsets: ["latin"],
@@ -17,8 +18,21 @@ const fontMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Draft AI",
-  description: "AI-powered outreach drafts for job seekers on X and LinkedIn",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Draft AI — Personalized outreach for X and LinkedIn",
+    template: "%s · Draft AI",
+  },
+  description: siteConfig.description,
+  applicationName: siteConfig.name,
+  openGraph: {
+    type: "website",
+    siteName: siteConfig.name,
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 }
 
 export default function RootLayout({

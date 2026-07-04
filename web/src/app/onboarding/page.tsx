@@ -92,7 +92,7 @@ export default function OnboardingPage() {
     if (status === "authenticated") {
       getOnboardingData().then((data) => {
         if (data?.onboardingComplete) {
-          router.replace("/")
+          router.replace("/dashboard")
           return
         }
         if (data?.profile) {
@@ -270,7 +270,7 @@ export default function OnboardingPage() {
     setError(null)
     try {
       await saveCandidateProfile(buildFormData(), true)
-      router.push("/")
+      router.push("/dashboard")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding")
     } finally {

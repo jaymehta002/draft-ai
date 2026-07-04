@@ -26,6 +26,14 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
+    async redirect({ url, baseUrl }) {
+      // Preserve explicit relative callback URLs (e.g. /extension/connect?state=...)
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      // Preserve same-origin absolute URLs
+      if (new URL(url).origin === baseUrl) return url
+      // Default landing spot after sign-in is the dashboard
+      return `${baseUrl}/dashboard`
+    },
   },
   pages: {
     signIn: "/",

@@ -89,7 +89,7 @@ export function AccountMenu({ name, email, image, title, onNavigate }: AccountMe
           className={cn(
             "rounded-lg px-3 py-2.5 text-destructive focus:bg-destructive/10 focus:text-destructive"
           )}
-          onSelect={() => signOut()}
+          onSelect={() => signOut({ callbackUrl: "/" })}
         >
           <LogOut className="h-4 w-4" />
           Sign out
