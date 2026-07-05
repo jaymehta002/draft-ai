@@ -20,6 +20,9 @@ model User {
   postDrafts       PostDraft[]
   sentOutreach     SentOutreach[]
   stats            UserStats?
+  emailThreads     EmailThread[]
+  emailMessages    EmailMessage[]
+  mailboxSync      MailboxSync?
 }
 
 model Account {
@@ -156,6 +159,8 @@ model SentOutreach {
   recipientHandle     String?
   recipientProfileUrl String?
   gmailMessageId      String?
+  rfcMessageId        String?   // RFC 2822 Message-ID header we injected
+  gmailThreadId       String?   // Gmail's native threadId from send response
   subject             String?
   message             String    @db.Text
   actionMode          String
@@ -163,11 +168,14 @@ model SentOutreach {
   responseReceivedAt  DateTime?
   sentAt              DateTime  @default(now())
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  postDraft PostDraft? @relation(fields: [postDraftId], references: [id], onDelete: SetNull)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postDraft   PostDraft?   @relation(fields: [postDraftId], references: [id], onDelete: SetNull)
+  emailThread EmailThread?
 
   @@index([userId, sentAt])
   @@index([postId])
+  @@index([rfcMessageId])
+  @@index([gmailThreadId])
 }
 
 model UserStats {
@@ -184,4 +192,69 @@ model UserStats {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ─── Email Threading Engine ───────────────────────────────────────────────────
+
+/// One conversation thread per outreach campaign reply chain.
+model EmailThread {
+  id               String   @id @default(cuid())
+  userId           String
+  sentOutreachId   String?  @unique // the originating SentOutreach record
+  subject          String?
+  participantEmail String?  // the external contact's email address
+  lastMessageAt    DateTime @default(now())
+  isRead           Boolean  @default(true)  // false when an inbound reply arrives
+  messageCount     Int      @default(1)
+  createdAt        DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentOutreach SentOutreach? @relation(fields: [sentOutreachId], references: [id], onDelete: SetNull)
+  messages     EmailMessage[]
+
+  @@index([userId, lastMessageAt])
+  @@index([userId, isRead])
+}
+
+/// Individual emails (inbound or outbound) belonging to an EmailThread.
+model EmailMessage {
+  id               String   @id @default(cuid())
+  threadId         String
+  userId           String
+  direction        String   // "OUTBOUND" | "INBOUND"
+  fromAddress      String
+  toAddresses      String?  @db.Text // JSON-serialised string[]
+  subject          String?
+  snippet          String?  @db.Text // first ~300 chars of plain text
+  rawBody          String?  @db.Text // full plain-text body
+  rfcMessageId     String?  // Message-ID header
+  inReplyTo        String?  // In-Reply-To header
+  references       String?  @db.Text // References header (space-separated)
+  providerMsgId    String?  // Gmail message ID
+  providerThreadId String?  // Gmail thread ID
+  isRead           Boolean  @default(false)
+  receivedAt       DateTime
+  createdAt        DateTime @default(now())
+
+  thread EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, providerMsgId])
+  @@index([threadId, receivedAt])
+  @@index([rfcMessageId])
+  @@index([inReplyTo])
+}
+
+/// Per-user sync state for the inbound mailbox sync engine.
+model MailboxSync {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  provider              String   @default("gmail")
+  gmailHistoryId        String?  // last processed Gmail historyId (opaque string)
+  encryptedRefreshToken String?  @db.Text // AES-256-GCM encrypted refresh token
+  syncError             String?  // last error message, null when healthy
+  lastSyncedAt          DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

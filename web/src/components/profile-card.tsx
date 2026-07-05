@@ -51,7 +51,7 @@ export function ProfileCard({
   return (
     <Card
       className={cn(
-        "overflow-hidden border-border bg-card shadow-sm transition-[box-shadow,transform,border-color] duration-200 hover:-translate-y-0.5 hover:shadow-md",
+        "overflow-hidden border-border bg-card shadow-sm transition-[box-shadow,transform,border-color] duration-200  hover:shadow-md",
         className
       )}
     >

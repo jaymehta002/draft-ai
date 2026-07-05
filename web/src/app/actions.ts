@@ -304,10 +304,58 @@ export async function getEmailsData() {
     where: { userId: user.id, actionMode: "EMAIL" },
     orderBy: { sentAt: "desc" },
     take: 200,
-    include: { postDraft: { select: { postText: true } } },
+    include: {
+      postDraft: { select: { postText: true } },
+      emailThread: {
+        include: {
+          messages: {
+            orderBy: { receivedAt: "asc" },
+          },
+        },
+      },
+    },
   })
 
-  const mapped = emails.map(mapOutreachRecord)
+  const mapped = emails.map((s) => {
+    const lifecycleState =
+      s.actionMode === "EMAIL" || s.status === "SENT"
+        ? getEmailLifecycleState(s.sentAt, s.responseReceivedAt)
+        : null
+
+    const messages = (s.emailThread?.messages ?? []).map((m) => ({
+      id: m.id,
+      direction: m.direction as "INBOUND" | "OUTBOUND",
+      fromAddress: m.fromAddress,
+      subject: m.subject,
+      snippet: m.snippet,
+      rawBody: m.rawBody,
+      isRead: m.isRead,
+      receivedAt: m.receivedAt.toISOString(),
+    }))
+
+    return {
+      id: s.id,
+      postId: s.postId,
+      postUrl: resolvePostUrl(s.postUrl, s.postId),
+      platform: s.platform,
+      recipientName: s.recipientName,
+      recipientEmail: s.recipientEmail,
+      recipientHandle: s.recipientHandle,
+      recipientProfileUrl: s.recipientProfileUrl,
+      gmailMessageId: s.gmailMessageId,
+      subject: s.subject,
+      message: s.message,
+      postText: s.postDraft?.postText ?? null,
+      actionMode: s.actionMode,
+      status: s.status,
+      lifecycleState,
+      responseReceivedAt: s.responseReceivedAt?.toISOString() ?? null,
+      sentAt: s.sentAt.toISOString(),
+      threadIsRead: s.emailThread?.isRead ?? true,
+      threadMessageCount: s.emailThread?.messageCount ?? 1,
+      messages,
+    }
+  })
 
   return {
     emails: mapped,
@@ -315,6 +363,7 @@ export async function getEmailsData() {
       sent: mapped.filter((e) => e.lifecycleState === "SENT").length,
       aged: mapped.filter((e) => e.lifecycleState === "AGED").length,
       responded: mapped.filter((e) => e.lifecycleState === "RESPONDED").length,
+      unread: mapped.filter((e) => !e.threadIsRead).length,
     },
   }
 }
@@ -339,6 +388,39 @@ export async function markEmailResponded(outreachId: string) {
     where: { id: outreachId, userId: user.id, actionMode: "EMAIL" },
     data: { responseReceivedAt: new Date() },
   })
+}
+
+export async function markThreadRead(outreachId: string) {
+  const user = await getAuthenticatedUser()
+
+  const outreach = await prisma.sentOutreach.findFirst({
+    where: { id: outreachId, userId: user.id },
+    select: { emailThread: { select: { id: true } } },
+  })
+
+  if (outreach?.emailThread?.id) {
+    await prisma.emailThread.update({
+      where: { id: outreach.emailThread.id },
+      data: { isRead: true },
+    })
+    await prisma.emailMessage.updateMany({
+      where: { threadId: outreach.emailThread.id, isRead: false },
+      data: { isRead: true },
+    })
+  }
+}
+
+export async function syncMailbox() {
+  const user = await getAuthenticatedUser()
+
+  const { processInboundForUser } = await import("@/lib/email-sync/inbound-processor")
+  const result = await processInboundForUser(user.id)
+
+  if (!result.ok) {
+    throw new Error(result.error ?? "Sync failed")
+  }
+
+  return { ok: true, newMessages: result.newMessages }
 }
 
 export async function getAnalyticsData() {

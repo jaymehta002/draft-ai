@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { google } from "googleapis"
+import { randomUUID } from "crypto"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { resolveUploadThingFileUrl } from "@/lib/uploadthing-server"
 import { incrementSentStats } from "@/lib/user-stats"
@@ -35,11 +36,9 @@ async function buildResumeAttachment(profile: {
 
   if (uploadThingUrl) {
     const response = await fetch(uploadThingUrl)
-
     if (response.ok) {
       const buffer = Buffer.from(await response.arrayBuffer())
       const responseType = response.headers.get("content-type")?.trim() || null
-
       return {
         fileName: originalName,
         mimeType: storedMimeType || responseType || "application/octet-stream",
@@ -49,7 +48,6 @@ async function buildResumeAttachment(profile: {
   }
 
   const storedFile = profile?.resumeFileData
-
   if (storedFile?.length) {
     return {
       fileName: originalName,
@@ -62,7 +60,6 @@ async function buildResumeAttachment(profile: {
   if (!content) return null
 
   const safeBaseName = originalName.replace(/\.[^.]+$/, "") || "resume"
-
   return {
     fileName: safeBaseName.endsWith(".txt") ? safeBaseName : `${safeBaseName}.txt`,
     mimeType: 'text/plain; charset="UTF-8"',
@@ -84,6 +81,11 @@ function normalizeEmailGreeting(message: string, recipientName: string | null) {
   }
 
   return `${greetingLine}\n\n${cleaned}`
+}
+
+/** Generates a globally-unique RFC 2822 Message-ID. */
+function generateRfcMessageId(): string {
+  return `<${randomUUID()}@mail.recruitable.ai>`
 }
 
 export async function POST(req: Request) {
@@ -109,7 +111,9 @@ export async function POST(req: Request) {
 
     const googleAccount = apiKey.user.accounts.find(a => a.provider === "google")
     if (!googleAccount || !googleAccount.refresh_token) {
-      return NextResponse.json({ error: "No Gmail account connected or missing refresh token. Please sign in again." }, { status: 400 })
+      return NextResponse.json({
+        error: "No Gmail account connected or missing refresh token. Please sign in again.",
+      }, { status: 400 })
     }
 
     const { to, subject, body, postId, postUrl, platform, draftId, recipientHandle, recipientProfileUrl } = await req.json()
@@ -121,11 +125,9 @@ export async function POST(req: Request) {
     if (!recipientEmail) {
       return NextResponse.json({ error: "Invalid recipient email" }, { status: 400 })
     }
-
     if (!normalizedSubject || !rawBody.trim()) {
       return NextResponse.json({ error: "Missing subject or body" }, { status: 400 })
     }
-
     if (!postId) {
       return NextResponse.json({ error: "Missing post ID" }, { status: 400 })
     }
@@ -149,21 +151,21 @@ export async function POST(req: Request) {
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
     )
-
-    oauth2Client.setCredentials({
-      refresh_token: googleAccount.refresh_token,
-    })
-
+    oauth2Client.setCredentials({ refresh_token: googleAccount.refresh_token })
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
+    // ── Build the outbound MIME message ────────────────────────────────────────
+    const rfcMessageId = generateRfcMessageId()
     const utf8Subject = `=?utf-8?B?${Buffer.from(normalizedSubject).toString("base64")}?=`
     const normalizedBody = normalizeEmailGreeting(rawBody, resolvedRecipientName)
     const resumeAttachment = await buildResumeAttachment(apiKey.user.candidateProfile)
     const boundary = `draft-ai-${Date.now()}`
+
     const messageParts = resumeAttachment
       ? [
           `To: ${recipientEmail}`,
           `Subject: ${utf8Subject}`,
+          `Message-ID: ${rfcMessageId}`,
           "MIME-Version: 1.0",
           `Content-Type: multipart/mixed; boundary="${boundary}"`,
           "",
@@ -184,14 +186,14 @@ export async function POST(req: Request) {
       : [
           `To: ${recipientEmail}`,
           `Subject: ${utf8Subject}`,
+          `Message-ID: ${rfcMessageId}`,
           "MIME-Version: 1.0",
           "Content-Type: text/plain; charset=utf-8",
           "",
           normalizedBody,
         ]
-    const message = messageParts.join("\n")
 
-    const encodedMessage = Buffer.from(message)
+    const encodedMessage = Buffer.from(messageParts.join("\n"))
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
@@ -199,12 +201,14 @@ export async function POST(req: Request) {
 
     const sendResult = await gmail.users.messages.send({
       userId: "me",
-      requestBody: {
-        raw: encodedMessage,
-      },
+      requestBody: { raw: encodedMessage },
     })
 
     const gmailMessageId = sendResult.data.id || null
+    const gmailThreadId = sendResult.data.threadId || null
+
+    // ── Persist SentOutreach + EmailThread + EmailMessage in one transaction ───
+    const snippet = normalizedBody.slice(0, 300)
 
     const sent = await prisma.sentOutreach.create({
       data: {
@@ -218,14 +222,41 @@ export async function POST(req: Request) {
         recipientHandle: recipientHandle || null,
         recipientProfileUrl: recipientProfileUrl || null,
         gmailMessageId,
+        rfcMessageId,
+        gmailThreadId,
         subject: normalizedSubject,
         message: normalizedBody,
         actionMode: "EMAIL",
         status: "SENT",
+        emailThread: {
+          create: {
+            userId: apiKey.userId,
+            subject: normalizedSubject,
+            participantEmail: recipientEmail,
+            lastMessageAt: new Date(),
+            isRead: true,
+            messageCount: 1,
+            messages: {
+              create: {
+                userId: apiKey.userId,
+                direction: "OUTBOUND",
+                fromAddress: apiKey.user.email ?? "",
+                toAddresses: JSON.stringify([recipientEmail]),
+                subject: normalizedSubject,
+                snippet,
+                rawBody: normalizedBody,
+                rfcMessageId,
+                providerMsgId: gmailMessageId,
+                providerThreadId: gmailThreadId,
+                isRead: true,
+                receivedAt: new Date(),
+              },
+            },
+          },
+        },
       },
     })
 
-    // Increment precomputed stats
     await incrementSentStats(apiKey.userId)
 
     return NextResponse.json({
@@ -233,6 +264,7 @@ export async function POST(req: Request) {
       message: "Email sent successfully",
       sentId: sent.id,
       gmailMessageId,
+      rfcMessageId,
     })
 
   } catch (error: unknown) {

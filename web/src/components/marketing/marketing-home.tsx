@@ -311,7 +311,7 @@ export function MarketingHome() {
               key={title}
               className="group bg-card p-7 transition-colors duration-200 hover:bg-card/60"
             >
-              <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-300 group-hover:-translate-y-0.5">
+              <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-300 group-">
                 <Icon className="size-5" strokeWidth={1.75} />
               </span>
               <h3 className="mt-5 font-serif text-lg tracking-tight text-foreground">{title}</h3>

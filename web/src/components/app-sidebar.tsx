@@ -10,12 +10,14 @@ import {
   Blocks,
   Feather,
   ChevronsLeft,
-  ChevronsRight,
   PanelLeftOpen,
   X,
+  FeatherIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export type DashboardSection =
   | "analytics"
@@ -30,18 +32,27 @@ const NAV_ITEMS: {
   label: string
   icon: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
   description: string
+  featured?: boolean
 }[] = [
     { id: "analytics", label: "Overview", icon: Gauge, description: "Dashboard analytics" },
-    { id: "drafts", label: "Drafts", icon: PenLine, description: "Pending outreach" },
     { id: "emails", label: "Inbox", icon: Inbox, description: "Email pipeline" },
+    { id: "drafts", label: "Drafts", icon: FeatherIcon, description: "Pending outreach" },
     { id: "dms", label: "Messages", icon: MessageCircle, description: "Direct messages" },
     { id: "profile", label: "Account", icon: CircleUserRound, description: "Your profile" },
     { id: "extension", label: "Integrations", icon: Blocks, description: "Connect apps" },
   ]
 
-// Single shared easing curve so every motion in the sidebar feels like part
-// of the same system (collapse, hover, active indicator, tooltips).
 const EASE = "cubic-bezier(0.16,1,0.3,1)"
+
+function getInitials(name?: string | null, email?: string | null) {
+  const base = (name || email || "U").trim()
+  return base
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+}
 
 type AppSidebarProps = {
   active: DashboardSection
@@ -49,6 +60,13 @@ type AppSidebarProps = {
   counts?: Partial<Record<DashboardSection, number>>
   mobileOpen: boolean
   onMobileClose: () => void
+  user?: {
+    name?: string | null
+    email?: string | null
+    image?: string | null
+    title?: string | null
+  }
+  loading?: boolean
 }
 
 function Wordmark({ collapsed }: { collapsed: boolean }) {
@@ -60,7 +78,10 @@ function Wordmark({ collapsed }: { collapsed: boolean }) {
       )}
       style={{ transitionTimingFunction: EASE }}
     >
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent transition-all duration-300" style={{ transitionTimingFunction: EASE }}>
+      <div
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all duration-300"
+        style={{ transitionTimingFunction: EASE }}
+      >
         <Feather className="size-4" strokeWidth={1.75} />
       </div>
       <div
@@ -74,12 +95,120 @@ function Wordmark({ collapsed }: { collapsed: boolean }) {
           className="truncate text-[13px] font-semibold leading-none tracking-tight text-sidebar-foreground"
           style={{ fontFamily: "var(--font-serif), ui-serif, Georgia, serif" }}
         >
-          Draft <span className="text-accent">AI</span>
+          Draft <span className="text-primary">AI</span>
         </p>
         <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted/70 mt-1">
           Outreach Studio
         </p>
       </div>
+    </div>
+  )
+}
+
+function NavBadge({
+  count,
+  isActive,
+  highlight,
+}: {
+  count: number
+  isActive: boolean
+  highlight?: boolean
+}) {
+  if (count <= 0) return null
+  return (
+    <span
+      className={cn(
+        "relative z-10 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums leading-none transition-all duration-200",
+        highlight
+          ? isActive
+            ? "bg-primary text-primary-foreground"
+            : "bg-primary text-primary-foreground "
+          : isActive
+            ? "bg-sidebar-accent-foreground/18 text-sidebar-accent-foreground"
+            : "bg-sidebar-accent/55 text-sidebar-foreground/72 group-hover/button:bg-sidebar-accent-foreground/16"
+      )}
+      style={{ transitionTimingFunction: EASE }}
+    >
+      {count}
+    </span>
+  )
+}
+
+function SidebarFooter({
+  user,
+  loading,
+  collapsed,
+  onNavigate,
+}: {
+  user?: AppSidebarProps["user"]
+  loading?: boolean
+  collapsed: boolean
+  onNavigate: (section: DashboardSection) => void
+}) {
+  if (loading) {
+    return (
+      <div
+        className={cn(
+          "border-t border-sidebar-border p-3 transition-colors duration-300",
+          collapsed ? "flex justify-center" : "space-y-2"
+        )}
+        style={{ transitionTimingFunction: EASE }}
+      >
+        {collapsed ? (
+          <Skeleton className="size-9 rounded-full" />
+        ) : (
+          <div className="flex items-center gap-3 px-1">
+            <Skeleton className="size-8 rounded-full shrink-0" />
+            <div className="flex-1 space-y-1.5 min-w-0">
+              <Skeleton className="h-3 w-24 rounded" />
+              <Skeleton className="h-2.5 w-32 rounded" />
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const initials = getInitials(user?.name, user?.email)
+
+  return (
+    <div
+      className={cn(
+        "border-t border-sidebar-border p-2 transition-colors duration-300",
+        collapsed ? "flex justify-center" : ""
+      )}
+      style={{ transitionTimingFunction: EASE }}
+    >
+      <button
+        type="button"
+        onClick={() => onNavigate("profile")}
+        className={cn(
+          "group/footer flex w-full items-center rounded-lg p-2 transition-[background-color,transform] duration-200 hover:bg-sidebar-accent/70 active:scale-[0.98] active:duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+          collapsed ? "justify-center gap-0" : "gap-3"
+        )}
+        style={{ transitionTimingFunction: EASE }}
+      >
+        <Avatar className="size-8 shrink-0 border border-sidebar-border ring-2 ring-sidebar-border/30">
+          <AvatarImage src={user?.image ?? undefined} alt={user?.name ?? "User"} />
+          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+        <div
+          className={cn(
+            "min-w-0 flex-1 text-left transition-[width,opacity] duration-300",
+            collapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+          )}
+          style={{ transitionTimingFunction: EASE }}
+        >
+          <p className="truncate text-xs font-semibold leading-tight text-sidebar-foreground">
+            {user?.name || "Account"}
+          </p>
+          <p className="truncate text-[10px] leading-tight text-sidebar-muted/80 mt-0.5">
+            {user?.title || user?.email || "Manage profile"}
+          </p>
+        </div>
+      </button>
     </div>
   )
 }
@@ -90,12 +219,14 @@ function NavContent({
   counts,
   onMobileClose,
   collapsed = false,
-}: Pick<AppSidebarProps, "active" | "onNavigate" | "counts" | "onMobileClose"> & {
+  user,
+  loading,
+}: Pick<AppSidebarProps, "active" | "onNavigate" | "counts" | "onMobileClose" | "user" | "loading"> & {
   collapsed?: boolean
 }) {
-
   return (
-    <>
+    <div className="flex h-full flex-col">
+      {/* Logo */}
       <div
         className={cn(
           "px-3 pt-5 pb-4 transition-all duration-300",
@@ -106,20 +237,21 @@ function NavContent({
         <Wordmark collapsed={collapsed} />
       </div>
 
-      <nav className="flex-1 space-y-1 px-2.5 pb-3">
-        {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+      {/* Nav */}
+      <nav className="flex-1 space-y-0.5 px-2.5 pb-3">
+        {NAV_ITEMS.map(({ id, label, icon: Icon, featured }) => {
           const isActive = active === id
           const count = counts?.[id]
+          const isInbox = id === "emails"
 
           return (
             <div key={id} className="group/item relative">
-              {/* Active indicator: a soft accent bar that grows/shrinks
-                  in from the left edge, instead of popping in/out. */}
+              {/* Active indicator bar */}
               <span
                 aria-hidden="true"
                 className={cn(
-                  "absolute left-0 top-1/2 z-10 w-[4px] -translate-y-1/2 rounded-full bg-sidebar-accent transition-all duration-300",
-                  isActive ? "h-[68%] opacity-100" : "h-0 opacity-0"
+                  "absolute left-0 top-1/2 z-10 w-[3px] -translate-y-1/2 rounded-full bg-primary transition-[height,opacity] duration-300",
+                  isActive ? "h-[60%] opacity-100" : "h-0 opacity-0"
                 )}
                 style={{ transitionTimingFunction: EASE }}
               />
@@ -137,37 +269,30 @@ function NavContent({
                   collapsed ? "justify-center gap-0 px-0" : "gap-3 px-3",
                   isActive
                     ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground shadow-sm"
-                    : "text-sidebar-foreground/72 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground active:bg-sidebar-accent active:scale-[0.98] active:duration-75"
+                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground active:bg-sidebar-accent active:scale-[0.98] active:duration-75"
                 )}
                 style={{ transitionTimingFunction: EASE }}
               >
-                {/* Darkening fill: sits under the content and ramps up in
-                    two steps — a soft tint on hover, a deeper shade on
-                    press — so the link reads as something you can push. */}
+                {/* Hover sheen */}
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "pointer-events-none absolute inset-0 rounded-[inherit] bg-transparent transition-colors duration-150",
-                    !isActive && "group-hover/button:bg-sidebar-foreground/5 group-active/button:bg-sidebar-foreground/10 group-active/button:duration-75"
-                  )}
-                />
-
-                {/* Hover sheen sweep */}
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "pointer-events-none absolute inset-0 rounded-[inherit] bg-gradient-to-r from-transparent via-sidebar-foreground/10 to-transparent opacity-0 transition-opacity duration-300",
-                    isActive ? "opacity-100" : "group-hover/button:opacity-100"
+                    "pointer-events-none absolute inset-0 rounded-[inherit] bg-gradient-to-r from-transparent via-sidebar-foreground/8 to-transparent opacity-0 transition-opacity duration-300",
+                    (isActive || featured) && "opacity-100"
                   )}
                   style={{ transitionTimingFunction: EASE }}
                 />
 
                 <Icon
                   className={cn(
-                    "relative z-10 size-4 shrink-0 transition-all duration-200",
+                    "relative z-10 size-4 shrink-0 transition-[transform,color] duration-200",
                     isActive
-                      ? "text-sidebar-accent-foreground scale-105"
-                      : "text-sidebar-foreground/60 group-hover/button:text-sidebar-accent-foreground group-hover/button:scale-110"
+                      ? featured
+                        ? "text-primary scale-105"
+                        : "text-sidebar-accent-foreground scale-105"
+                      : featured
+                        ? "text-primary/70 group-hover/button:text-primary group-hover/button:scale-110"
+                        : "text-sidebar-foreground/55 group-hover/button:text-sidebar-foreground group-hover/button:scale-110"
                   )}
                   strokeWidth={1.75}
                   style={{ transitionTimingFunction: EASE }}
@@ -175,10 +300,9 @@ function NavContent({
 
                 <span
                   className={cn(
-                    "relative z-10 truncate text-left transition-all duration-300",
-                    collapsed
-                      ? "w-0 opacity-0"
-                      : "flex-1 w-auto opacity-100"
+                    "relative z-10 truncate text-left transition-[width,opacity] duration-300",
+                    collapsed ? "w-0 opacity-0" : "flex-1 w-auto opacity-100",
+                    featured && !isActive && "text-sidebar-foreground/85 font-medium"
                   )}
                   style={{ transitionTimingFunction: EASE }}
                 >
@@ -186,17 +310,7 @@ function NavContent({
                 </span>
 
                 {!collapsed && count != null && count > 0 && (
-                  <span
-                    className={cn(
-                      "relative z-10 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums leading-none transition-all duration-200",
-                      isActive
-                        ? "bg-sidebar-accent-foreground/18 text-sidebar-accent-foreground"
-                        : "bg-sidebar-accent/55 text-sidebar-foreground/72 group-hover/button:bg-sidebar-accent-foreground/16"
-                    )}
-                    style={{ transitionTimingFunction: EASE }}
-                  >
-                    {count}
-                  </span>
+                  <NavBadge count={count} isActive={isActive} highlight={isInbox} />
                 )}
               </button>
 
@@ -221,23 +335,27 @@ function NavContent({
           )
         })}
       </nav>
-    </>
+
+      {/* Footer user block */}
+      <SidebarFooter
+        user={user}
+        loading={loading}
+        collapsed={collapsed}
+        onNavigate={onNavigate}
+      />
+    </div>
   )
 }
 
-export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClose }: AppSidebarProps) {
+export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClose, user, loading }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
 
   useEffect(() => {
     if (!mobileOpen) return
-
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onMobileClose()
-      }
+      if (event.key === "Escape") onMobileClose()
     }
-
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [mobileOpen, onMobileClose])
@@ -245,21 +363,18 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
   const handleCollapse = () => {
     setIsAnimating(true)
     setCollapsed((v) => !v)
-    // Match this to the width transition duration below so overflow is
-    // only clipped while it's actually needed, then released — this is
-    // what keeps hover/tooltip motion smooth right after a collapse.
     window.setTimeout(() => setIsAnimating(false), 350)
   }
 
   return (
     <>
-      {/* Desktop — persistent sidebar */}
+      {/* Desktop sidebar */}
       <aside
         className={cn(
           "hidden lg:flex lg:shrink-0 lg:flex-col lg:h-screen lg:sticky lg:top-0",
           "bg-sidebar border-r border-sidebar-border shadow-sm",
-          "transition-[width] duration-350 will-change-[width]",
-          collapsed ? "lg:w-[64px]" : "lg:w-[220px]",
+          "transition-[width] will-change-[width]",
+          collapsed ? "lg:w-[64px]" : "lg:w-[224px]",
           isAnimating && "overflow-hidden"
         )}
         style={{ transitionTimingFunction: EASE, transitionDuration: "350ms" }}
@@ -270,12 +385,14 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
           counts={counts}
           onMobileClose={onMobileClose}
           collapsed={collapsed}
+          user={user}
+          loading={loading}
         />
 
-        {/* Desktop collapse button */}
+        {/* Collapse toggle */}
         <div
           className={cn(
-            "mt-auto px-2.5 py-3 transition-all duration-300",
+            "px-2.5 pb-3 transition-all duration-300",
             collapsed && "flex justify-center"
           )}
           style={{ transitionTimingFunction: EASE }}
@@ -284,14 +401,14 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
             onClick={handleCollapse}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             className={cn(
-              "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-sidebar-foreground/70 transition-[background-color,color,transform] duration-200 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground active:bg-sidebar-accent active:scale-[0.97] active:duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+              "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-sidebar-foreground/60 transition-[background-color,color,transform] duration-200 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground active:bg-sidebar-accent active:scale-[0.97] active:duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
               collapsed && "w-10 justify-center px-0"
             )}
             style={{ transitionTimingFunction: EASE }}
           >
             <ChevronsLeft
               className={cn(
-                "size-4 shrink-0 transition-transform duration-300",
+                "size-3.5 shrink-0 transition-transform duration-300",
                 collapsed && "rotate-180"
               )}
               strokeWidth={1.75}
@@ -299,7 +416,7 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
             />
             <span
               className={cn(
-                "overflow-hidden whitespace-nowrap transition-all duration-300",
+                "overflow-hidden whitespace-nowrap transition-[width,opacity] duration-300",
                 collapsed ? "w-0 opacity-0" : "w-auto opacity-100"
               )}
               style={{ transitionTimingFunction: EASE }}
@@ -310,7 +427,7 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
         </div>
       </aside>
 
-      {/* Mobile — overlay sidebar */}
+      {/* Mobile overlay */}
       {mobileOpen && (
         <>
           <div
@@ -330,15 +447,15 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
                 <X className="size-4" strokeWidth={1.75} />
               </Button>
             </div>
-            <div className="flex h-full flex-col">
-              <NavContent
-                active={active}
-                onNavigate={onNavigate}
-                counts={counts}
-                onMobileClose={onMobileClose}
-                collapsed={false}
-              />
-            </div>
+            <NavContent
+              active={active}
+              onNavigate={onNavigate}
+              counts={counts}
+              onMobileClose={onMobileClose}
+              collapsed={false}
+              user={user}
+              loading={loading}
+            />
           </aside>
         </>
       )}

@@ -1,9 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Save, User, Briefcase, FolderKanban, Award, Link2, Target } from "lucide-react"
+import { Save, User, Briefcase, FolderKanban, Award, Link2, Target, FileText, Loader2, UploadCloud, CheckCircle2 } from "lucide-react"
+import { useUploadThing } from "@/lib/uploadthing-client"
+import { extractTextFromFile } from "@/lib/pdf-extract"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
-import { syncLegacyFields } from "@/lib/candidate-profile"
+import { syncLegacyFields, profileToFormData } from "@/lib/candidate-profile"
+import { saveCandidateProfile } from "@/app/actions"
 import { WorkExperienceEditor } from "@/components/profile/work-experience-editor"
 import { ProjectsEditor } from "@/components/profile/projects-editor"
 import { CertificatesEditor } from "@/components/profile/certificates-editor"
@@ -121,6 +124,9 @@ export function ProfileEditor({ profile, onChange, onSave, saving, error }: Prof
                 className="min-h-20 resize-y"
               />
             </FormField>
+            <FormField label="Resume attachment" hint="This file is attached to your outgoing emails">
+              <ResumeUploader profile={profile} update={update} />
+            </FormField>
           </div>
         )}
 
@@ -217,6 +223,96 @@ function SectionTitle({ title, description }: { title: string; description: stri
     <div>
       <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
       <p className="text-sm text-muted-foreground mt-1">{description}</p>
+    </div>
+  )
+}
+
+function ResumeUploader({
+  profile,
+  update,
+}: {
+  profile: CandidateProfileData
+  update: (patch: Partial<CandidateProfileData>) => void
+}) {
+  const { startUpload, isUploading } = useUploadThing("resumeUploader")
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setError(null)
+    setSuccess(false)
+
+    try {
+      const [text, uploadedFiles] = await Promise.all([
+        extractTextFromFile(file),
+        startUpload([file]),
+      ])
+      const uploaded = uploadedFiles?.[0]
+      if (!uploaded) throw new Error("Upload failed")
+
+      const newPatch = {
+        resumeFileName: uploaded.serverData?.fileName || uploaded.name || file.name,
+        resumeMimeType: uploaded.serverData?.fileType || uploaded.type || file.type || "application/octet-stream",
+        resumeStorageKey: uploaded.serverData?.storageKey || uploaded.key || "",
+        resumeFileUrl: uploaded.serverData?.fileUrl || uploaded.ufsUrl || uploaded.url || "",
+        resumeFileSize: String(uploaded.serverData?.fileSize || uploaded.size || file.size || ""),
+        resumeContent: text,
+      }
+
+      update(newPatch)
+      
+      const updatedProfile = syncLegacyFields({ ...profile, ...newPatch })
+      const formData = profileToFormData(updatedProfile)
+      await saveCandidateProfile(formData)
+
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload resume")
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 p-4 border border-border rounded-xl bg-card">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 shrink-0 bg-primary/10 text-primary flex items-center justify-center rounded-lg">
+          <FileText className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground truncate">
+            {profile.resumeFileName || "No resume uploaded"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {profile.resumeFileUrl ? "PDF successfully attached" : "Upload a PDF to attach to emails"}
+          </p>
+        </div>
+      </div>
+
+      {error && <p className="text-xs text-destructive">{error}</p>}
+
+      <div className="flex items-center gap-2 mt-1">
+        <label className="relative inline-flex items-center justify-center cursor-pointer">
+          <input
+            type="file"
+            accept=".pdf,.txt,.md,application/pdf,text/plain"
+            className="sr-only"
+            disabled={isUploading}
+            onChange={handleFile}
+          />
+          <span className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-lg transition-colors cursor-pointer">
+            {isUploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : success ? (
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            ) : (
+              <UploadCloud className="h-4 w-4" />
+            )}
+            {isUploading ? "Uploading..." : success ? "Uploaded!" : profile.resumeFileUrl ? "Replace PDF" : "Upload PDF"}
+          </span>
+        </label>
+      </div>
     </div>
   )
 }

@@ -39,7 +39,7 @@ export function AccountMenu({ name, email, image, title, onNavigate }: AccountMe
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-3 rounded-full border border-border bg-card px-1.5 py-1.5 text-left shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-border/80 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.98]"
+          className="inline-flex items-center gap-3 rounded-full border border-border bg-card px-1.5 py-1.5 text-left shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-border/80 hover:shadow-md  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.98]"
           aria-label="Open account menu"
         >
           <Avatar className="h-9 w-9 border border-border/60">
