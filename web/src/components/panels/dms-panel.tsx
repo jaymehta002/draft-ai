@@ -9,6 +9,7 @@ import {
   User,
   ExternalLink,
   Search,
+  CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { PostLink } from "@/components/post-link"
 import { RecipientProfile } from "@/components/recipient-profile"
 import { filterBySearch, sortByField } from "@/lib/panel-filters"
+import { EMAIL_STATE_LABELS, type EmailLifecycleState } from "@/lib/outreach-state"
 import { cn } from "@/lib/utils"
 import type { getDMsData } from "@/app/actions"
 
@@ -66,6 +68,12 @@ function EmptyList({ filtered }: { filtered: boolean }) {
       </div>
     </div>
   )
+}
+
+const LIFECYCLE_VARIANT: Record<EmailLifecycleState, "default" | "secondary" | "outline"> = {
+  SENT: "secondary",
+  AGED: "outline",
+  RESPONDED: "default",
 }
 
 function DMListItem({
@@ -120,10 +128,18 @@ function DMListItem({
             </span>
           </div>
 
-          <div className="mt-0.5">
+          <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
             <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">
               {dm.platform}
             </Badge>
+            {dm.lifecycleState && (
+              <Badge
+                variant={LIFECYCLE_VARIANT[dm.lifecycleState]}
+                className="text-[9px] px-1.5 py-0 h-4"
+              >
+                {EMAIL_STATE_LABELS[dm.lifecycleState]}
+              </Badge>
+            )}
           </div>
 
           <p
@@ -140,7 +156,15 @@ function DMListItem({
   )
 }
 
-function DMDetailView({ dm }: { dm: DMItem }) {
+function DMDetailView({
+  dm,
+  onMarkReplied,
+  markingReplied,
+}: {
+  dm: DMItem
+  onMarkReplied: (id: string) => void
+  markingReplied: boolean
+}) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -208,12 +232,31 @@ function DMDetailView({ dm }: { dm: DMItem }) {
           </div>
 
           {/* Metadata */}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
             <span className="flex items-center gap-1">
               <Clock className="size-3" />
               Copied {formatDate(dm.sentAt)}
             </span>
+            {dm.responseReceivedAt && (
+              <span className="flex items-center gap-1 text-primary">
+                <CheckCircle2 className="size-3" />
+                Replied {formatDate(dm.responseReceivedAt)}
+              </span>
+            )}
           </div>
+
+          {dm.lifecycleState && dm.lifecycleState !== "RESPONDED" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={markingReplied}
+              onClick={() => onMarkReplied(dm.id)}
+              className="gap-1.5"
+            >
+              <CheckCircle2 className="size-3.5" />
+              Mark as replied
+            </Button>
+          )}
 
           <Separator />
 
@@ -264,12 +307,14 @@ function NoSelection() {
 
 type DMsPanelProps = {
   dms: DMItem[]
+  onMarkReplied?: (id: string) => Promise<void>
 }
 
-export function DMsPanel({ dms }: DMsPanelProps) {
+export function DMsPanel({ dms, onMarkReplied }: DMsPanelProps) {
   const [search, setSearch] = useState("")
   const [platformFilter, setPlatformFilter] = useState("all")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [markingReplied, setMarkingReplied] = useState(false)
 
   const platforms = useMemo(() => [...new Set(dms.map((d) => d.platform))], [dms])
 
@@ -283,6 +328,16 @@ export function DMsPanel({ dms }: DMsPanelProps) {
   }, [dms, search, platformFilter])
 
   const selectedDM = filtered.find((d) => d.id === selectedId) ?? filtered[0] ?? null
+
+  const handleMarkReplied = async (id: string) => {
+    if (!onMarkReplied) return
+    setMarkingReplied(true)
+    try {
+      await onMarkReplied(id)
+    } finally {
+      setMarkingReplied(false)
+    }
+  }
 
   return (
     <div className="flex h-[calc(100vh-8rem)] rounded-xl border border-border overflow-hidden shadow-sm bg-card">
@@ -349,7 +404,15 @@ export function DMsPanel({ dms }: DMsPanelProps) {
 
       {/* Right — Detail */}
       <div className="flex flex-1 flex-col min-w-0 bg-background">
-        {selectedDM ? <DMDetailView dm={selectedDM} /> : <NoSelection />}
+        {selectedDM ? (
+          <DMDetailView
+            dm={selectedDM}
+            onMarkReplied={handleMarkReplied}
+            markingReplied={markingReplied}
+          />
+        ) : (
+          <NoSelection />
+        )}
       </div>
     </div>
   )

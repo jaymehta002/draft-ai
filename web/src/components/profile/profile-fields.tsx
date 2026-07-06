@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { coerceSelectYear, getYearOptions } from "@/lib/work-experience-dates"
 import {
   Select,
   SelectContent,
@@ -43,8 +44,8 @@ export function MonthYearSelect({
   yearLabel?: string
 }) {
   const emptyValue = "__empty__"
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 40 }, (_, i) => String(currentYear - i))
+  const years = getYearOptions()
+  const coercedYear = coerceSelectYear(year, years)
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -56,7 +57,7 @@ export function MonthYearSelect({
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Month" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60" position="popper">
             <SelectItem value={emptyValue}>Month</SelectItem>
             {Array.from({ length: 12 }, (_, i) => {
               const m = String(i + 1).padStart(2, "0")
@@ -71,13 +72,13 @@ export function MonthYearSelect({
       </FormField>
       <FormField label={yearLabel}>
         <Select
-          value={year || emptyValue}
+          value={coercedYear || emptyValue}
           onValueChange={(value) => onYearChange(value === emptyValue ? "" : value)}
         >
           <SelectTrigger className="h-9">
             <SelectValue placeholder="Year" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60" position="popper">
             <SelectItem value={emptyValue}>Year</SelectItem>
             {years.map((y) => (
               <SelectItem key={y} value={y}>

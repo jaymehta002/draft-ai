@@ -14,7 +14,13 @@ import {
   syncLegacyFields,
   type CandidateProfileData,
 } from "@/lib/candidate-profile"
-import { getEmailLifecycleState } from "@/lib/outreach-state"
+import {
+  accountHasFullGmailAccess,
+  accountHasGmailReadonly,
+  accountHasGmailSend,
+  formatGmailAuthError,
+} from "@/lib/gmail-scopes"
+import { getEmailLifecycleState, getOutreachLifecycleState } from "@/lib/outreach-state"
 import { resolvePostUrl } from "@/lib/post-url"
 import { utapi } from "@/lib/uploadthing-server"
 
@@ -56,6 +62,9 @@ function toCandidateProfileData(profile: {
   salaryExpectation: string | null
   workPreference: string | null
   availability: string | null
+  outreachTone: string | null
+  draftLength: string | null
+  outreachLanguage: string | null
 }): CandidateProfileData {
   const structured = migrateLegacyToStructured(profile)
   const base: CandidateProfileData = {
@@ -86,6 +95,9 @@ function toCandidateProfileData(profile: {
     salaryExpectation: profile.salaryExpectation ?? "",
     workPreference: profile.workPreference ?? "",
     availability: profile.availability ?? "",
+    outreachTone: profile.outreachTone ?? "professional",
+    draftLength: profile.draftLength ?? "medium",
+    outreachLanguage: profile.outreachLanguage ?? "en",
   }
   return syncLegacyFields(base)
 }
@@ -136,6 +148,9 @@ export async function saveCandidateProfile(formData: FormData, completeOnboardin
     salaryExpectation: data.salaryExpectation,
     workPreference: data.workPreference,
     availability: data.availability,
+    outreachTone: data.outreachTone || "professional",
+    draftLength: data.draftLength || "medium",
+    outreachLanguage: data.outreachLanguage || "en",
     onboardingComplete: completeOnboarding ? onboardingComplete : undefined,
   }
 
@@ -158,6 +173,64 @@ export async function saveCandidateProfile(formData: FormData, completeOnboardin
     } catch (error) {
       console.error("Failed to delete replaced resume from UploadThing:", error)
     }
+  }
+}
+
+export async function saveOutreachPreferences(prefs: {
+  outreachTone: string
+  draftLength: string
+  outreachLanguage: string
+}) {
+  const user = await getAuthenticatedUser()
+
+  await prisma.candidateProfile.upsert({
+    where: { userId: user.id },
+    update: {
+      outreachTone: prefs.outreachTone,
+      draftLength: prefs.draftLength,
+      outreachLanguage: prefs.outreachLanguage,
+    },
+    create: {
+      userId: user.id,
+      outreachTone: prefs.outreachTone,
+      draftLength: prefs.draftLength,
+      outreachLanguage: prefs.outreachLanguage,
+      onboardingComplete: false,
+    },
+  })
+}
+
+export async function getIntegrationStatus() {
+  const user = await getAuthenticatedUser()
+
+  const [account, mailboxSync, draftCount] = await Promise.all([
+    prisma.account.findFirst({
+      where: { userId: user.id, provider: "google" },
+      select: { scope: true, refresh_token: true },
+    }),
+    prisma.mailboxSync.findUnique({
+      where: { userId: user.id },
+      select: { syncError: true },
+    }),
+    prisma.postDraft.count({ where: { userId: user.id } }),
+  ])
+
+  const hasGmailSend = accountHasGmailSend(account?.scope)
+  const hasGmailReadonly = accountHasGmailReadonly(account?.scope)
+  const hasRefreshToken = Boolean(account?.refresh_token)
+  const gmailMissingReadonly = hasGmailSend && !hasGmailReadonly
+  const gmailConnected =
+    accountHasFullGmailAccess(account?.scope) && hasRefreshToken && !mailboxSync?.syncError
+  const gmailNeedsReconnect =
+    (hasGmailSend || hasGmailReadonly) &&
+    (!hasRefreshToken || Boolean(mailboxSync?.syncError) || gmailMissingReadonly)
+
+  return {
+    gmailConnected,
+    gmailNeedsReconnect,
+    gmailNotEnabled: !hasGmailSend && !hasGmailReadonly,
+    gmailMissingReadonly,
+    hasDrafted: draftCount > 0,
   }
 }
 
@@ -253,10 +326,7 @@ function mapOutreachRecord(s: {
   sentAt: Date
   postDraft?: { postText: string } | null
 }) {
-  const lifecycleState =
-    s.actionMode === "EMAIL" || s.status === "SENT"
-      ? getEmailLifecycleState(s.sentAt, s.responseReceivedAt)
-      : null
+  const lifecycleState = getOutreachLifecycleState(s.sentAt, s.responseReceivedAt)
 
   return {
     id: s.id,
@@ -384,10 +454,29 @@ export async function getDMsData() {
 export async function markEmailResponded(outreachId: string) {
   const user = await getAuthenticatedUser()
 
-  await prisma.sentOutreach.updateMany({
-    where: { id: outreachId, userId: user.id, actionMode: "EMAIL" },
-    data: { responseReceivedAt: new Date() },
+  const updated = await prisma.sentOutreach.updateMany({
+    where: { id: outreachId, userId: user.id, actionMode: "EMAIL", responseReceivedAt: null },
+    data: { responseReceivedAt: new Date(), responseSource: "MANUAL" },
   })
+
+  if (updated.count > 0) {
+    const { incrementReplyStats } = await import("@/lib/user-stats")
+    await incrementReplyStats(user.id)
+  }
+}
+
+export async function markDMResponded(outreachId: string) {
+  const user = await getAuthenticatedUser()
+
+  const updated = await prisma.sentOutreach.updateMany({
+    where: { id: outreachId, userId: user.id, actionMode: "DM", responseReceivedAt: null },
+    data: { responseReceivedAt: new Date(), responseSource: "MANUAL" },
+  })
+
+  if (updated.count > 0) {
+    const { incrementReplyStats } = await import("@/lib/user-stats")
+    await incrementReplyStats(user.id)
+  }
 }
 
 export async function markThreadRead(outreachId: string) {
@@ -417,7 +506,7 @@ export async function syncMailbox() {
   const result = await processInboundForUser(user.id)
 
   if (!result.ok) {
-    throw new Error(result.error ?? "Sync failed")
+    throw new Error(formatGmailAuthError(result.error ?? "Sync failed"))
   }
 
   return { ok: true, newMessages: result.newMessages }
@@ -425,8 +514,10 @@ export async function syncMailbox() {
 
 export async function getAnalyticsData() {
   const user = await getAuthenticatedUser()
+  const { getUserReplyMetrics } = await import("@/lib/reply-metrics")
 
-  const [totalDrafts, sentOutreach, cacheAggregate, draftsThisWeek] = await Promise.all([
+  const [totalDrafts, sentOutreach, cacheAggregate, draftsThisWeek, sentThisWeek, replyMetrics] =
+    await Promise.all([
     prisma.postDraft.count({ where: { userId: user.id } }),
     prisma.sentOutreach.findMany({
       where: { userId: user.id },
@@ -444,6 +535,13 @@ export async function getAnalyticsData() {
         createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
       },
     }),
+    prisma.sentOutreach.count({
+      where: {
+        userId: user.id,
+        sentAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      },
+    }),
+    getUserReplyMetrics(user.id),
   ])
 
   const emailsSent = sentOutreach.filter((s) => s.status === "SENT").length
@@ -459,14 +557,75 @@ export async function getAnalyticsData() {
   return {
     totalDrafts,
     draftsThisWeek,
+    sentThisWeek,
     emailsSent,
     dmsCopied,
     totalOutreach: sentOutreach.length,
     cacheHits,
     tokensSavedEstimate,
     platformBreakdown,
+    replyRate: replyMetrics.replyRate,
+    replyRate7d: replyMetrics.replyRate7d,
+    totalReplied: replyMetrics.totalReplied,
+    repliedThisWeek: replyMetrics.repliedThisWeek,
+    toneInsights: replyMetrics.toneInsights,
     sentOutreach: sentOutreach.map((s) => mapOutreachRecord(s)),
   }
+}
+
+export async function getWinningTemplates(industryTag?: string | null) {
+  const templates = await prisma.winningTemplate.findMany({
+    where: {
+      isPublished: true,
+      ...(industryTag ? { industryTag } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+  })
+
+  return templates.map((t) => ({
+    id: t.id,
+    industryTag: t.industryTag,
+    toneUsed: t.toneUsed,
+    excerpt: t.excerpt,
+    matchScore: t.matchScore,
+  }))
+}
+
+export async function syncWinningTemplatesFromReplies() {
+  const user = await getAuthenticatedUser()
+
+  const winners = await prisma.sentOutreach.findMany({
+    where: {
+      userId: user.id,
+      responseReceivedAt: { not: null },
+      matchScore: { gte: 70 },
+    },
+    orderBy: { responseReceivedAt: "desc" },
+    take: 20,
+  })
+
+  for (const w of winners) {
+    const excerpt = w.message.slice(0, 280).trim()
+    if (!excerpt) continue
+
+    const existing = await prisma.winningTemplate.findFirst({
+      where: { excerpt, toneUsed: w.toneUsed },
+    })
+    if (existing) continue
+
+    await prisma.winningTemplate.create({
+      data: {
+        industryTag: w.industryTag,
+        toneUsed: w.toneUsed,
+        excerpt,
+        matchScore: w.matchScore,
+        isPublished: false,
+      },
+    })
+  }
+
+  return { synced: winners.length }
 }
 
 export async function getDashboardData() {

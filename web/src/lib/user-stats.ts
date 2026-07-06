@@ -129,6 +129,9 @@ export async function getUserStats(userId: string) {
         sentThisWeek,
         totalSent,
         draftsToday,
+        totalReplied: 0,
+        repliedThisWeek: 0,
+        replyRate7d: 0,
         lastResetDate: dateKey,
         lastResetWeek: weekKey,
       },
@@ -157,5 +160,13 @@ export async function getUserStats(userId: string) {
     sentThisWeek: stats.sentThisWeek,
     totalSent: stats.totalSent,
     draftsToday: stats.draftsToday,
+    totalReplied: stats.totalReplied,
+    repliedThisWeek: stats.repliedThisWeek,
+    replyRate7d: stats.replyRate7d ?? 0,
   }
+}
+
+export async function incrementReplyStats(userId: string) {
+  const { recomputeReplyRate7d } = await import("@/lib/reply-metrics")
+  await recomputeReplyRate7d(userId)
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
+import { signIn } from "next-auth/react"
 import {
   ExternalLink,
   Search,
@@ -18,9 +19,12 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { PostLink } from "@/components/post-link"
+import { EmailBodyContent } from "@/components/email-body-content"
 import { filterBySearch, sortByField } from "@/lib/panel-filters"
 import { EMAIL_STATE_LABELS, type EmailLifecycleState } from "@/lib/outreach-state"
 import { markEmailResponded, markThreadRead, syncMailbox } from "@/app/actions"
+import { formatGmailAuthError } from "@/lib/gmail-scopes"
+import type { EmailLinkHints } from "@/lib/email-body-format"
 import { cn } from "@/lib/utils"
 import type { getEmailsData } from "@/app/actions"
 
@@ -171,35 +175,62 @@ function ThreadListItem({
   )
 }
 
-function MessageBubble({ message }: { message: ThreadMessage }) {
+function MessageBubble({
+  message,
+  linkHints,
+}: {
+  message: ThreadMessage
+  linkHints?: EmailLinkHints
+}) {
   const isOutbound = message.direction === "OUTBOUND"
   const body = message.rawBody || message.snippet || ""
 
   return (
-    <div className={cn("flex flex-col gap-1", isOutbound ? "items-start" : "items-end")}>
-      {/* Direction label */}
-      <div className={cn("flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground", isOutbound ? "flex-row" : "flex-row-reverse")}>
-        {isOutbound
-          ? <ArrowUpRight className="size-3 text-primary" />
-          : <ArrowDownLeft className="size-3 text-chart-2" />}
-        <span>{isOutbound ? "You" : "Them"}</span>
-        <span className="opacity-60 font-normal normal-case tracking-normal ml-1">
-          · {formatDate(message.receivedAt)}
-        </span>
-      </div>
-
-      {/* Bubble */}
+    <article
+      className={cn(
+        "rounded-xl border overflow-hidden",
+        isOutbound
+          ? "border-primary/20 bg-primary/[0.03]"
+          : "border-border bg-card shadow-sm"
+      )}
+    >
       <div
         className={cn(
-          "max-w-[85%] rounded-xl p-4",
-          isOutbound
-            ? "rounded-tl-sm bg-primary text-primary-foreground"
-            : "rounded-tr-sm bg-muted text-foreground border border-border"
+          "flex items-center justify-between gap-3 border-b px-4 py-2.5",
+          isOutbound ? "border-primary/10 bg-primary/[0.06]" : "border-border/60 bg-muted/30"
         )}
       >
-        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{body}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <div
+            className={cn(
+              "flex size-6 shrink-0 items-center justify-center rounded-full",
+              isOutbound ? "bg-primary/15 text-primary" : "bg-chart-2/15 text-chart-2"
+            )}
+          >
+            {isOutbound ? (
+              <ArrowUpRight className="size-3" />
+            ) : (
+              <ArrowDownLeft className="size-3" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-foreground">
+              {isOutbound ? "You" : "Reply"}
+            </p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {formatDate(message.receivedAt)}
+            </p>
+          </div>
+        </div>
+        <Badge variant={isOutbound ? "secondary" : "outline"} className="text-[10px] shrink-0">
+          {isOutbound ? "Sent" : "Received"}
+        </Badge>
       </div>
-    </div>
+
+      <div className="px-4 py-4">
+        <EmailBodyContent body={body} variant={isOutbound ? "outbound" : "inbound"} linkHints={linkHints} />
+      </div>
+    </article>
   )
 }
 
@@ -207,10 +238,12 @@ function EmailDetailView({
   email,
   onMarkResponded,
   marking,
+  linkHints,
 }: {
   email: EmailItem
   onMarkResponded: () => void
   marking: boolean
+  linkHints?: EmailLinkHints
 }) {
   // Merge: if messages array is populated use it; otherwise fall back to the
   // legacy `message` field so existing pre-migration rows still render.
@@ -290,10 +323,10 @@ function EmailDetailView({
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="p-5 space-y-5">
+        <div className="p-5 space-y-4">
           {/* Full conversation thread */}
           {threadMessages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
+            <MessageBubble key={msg.id} message={msg} linkHints={linkHints} />
           ))}
 
           <Separator />
@@ -346,9 +379,11 @@ function NoSelection() {
 type EmailsPanelProps = {
   emails: EmailItem[]
   onRefresh?: () => void
+  gmailMissingReadonly?: boolean
+  linkHints?: EmailLinkHints
 }
 
-export function EmailsPanel({ emails, onRefresh }: EmailsPanelProps) {
+export function EmailsPanel({ emails, onRefresh, gmailMissingReadonly, linkHints }: EmailsPanelProps) {
   const [search, setSearch] = useState("")
   const [stateFilter, setStateFilter] = useState<"all" | EmailLifecycleState>("all")
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -414,13 +449,29 @@ export function EmailsPanel({ emails, onRefresh }: EmailsPanelProps) {
         )
         onRefresh?.()
       } catch (err) {
-        setSyncMessage(err instanceof Error ? err.message : "Sync failed")
+        const raw = err instanceof Error ? err.message : "Sync failed"
+        setSyncMessage(formatGmailAuthError(raw))
       }
     })
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] rounded-xl border border-border overflow-hidden shadow-sm bg-card">
+    <div className="flex h-[calc(100vh-8rem)] flex-col gap-3">
+      {gmailMissingReadonly && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+          <p className="text-sm text-foreground">
+            Gmail reply tracking needs inbox read access. Reconnect Google to sync replies.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => signIn("google", { callbackUrl: "/dashboard?section=emails" })}
+          >
+            Reconnect Google
+          </Button>
+        </div>
+      )}
+    <div className="flex flex-1 rounded-xl border border-border overflow-hidden shadow-sm bg-card min-h-0">
       {/* Left — Thread list */}
       <div className="flex w-[300px] shrink-0 flex-col border-r border-border">
         {/* Search + filters */}
@@ -513,11 +564,13 @@ export function EmailsPanel({ emails, onRefresh }: EmailsPanelProps) {
             email={selectedEmail}
             onMarkResponded={handleMarkResponded}
             marking={markingId === selectedEmail.id}
+            linkHints={linkHints}
           />
         ) : (
           <NoSelection />
         )}
       </div>
+    </div>
     </div>
   )
 }

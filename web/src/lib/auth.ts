@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import { PrismaAdapter } from "@auth/prisma-adapter"
+import { persistGoogleAccountOnSignIn } from "@/lib/google-account-tokens"
 import { prisma } from "@/lib/prisma"
 
 export const authOptions: NextAuthOptions = {
@@ -14,11 +15,19 @@ export const authOptions: NextAuthOptions = {
           prompt: "consent",
           access_type: "offline",
           response_type: "code",
+          include_granted_scopes: "true",
           scope: "openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
         },
       },
     }),
   ],
+  events: {
+    async signIn({ user, account }) {
+      if (account?.provider === "google" && user.id) {
+        await persistGoogleAccountOnSignIn(user.id, account)
+      }
+    },
+  },
   callbacks: {
     async session({ session, user }) {
       if (session?.user) {

@@ -11,10 +11,13 @@
  *   7. Advances the MailboxSync cursor
  */
 
+import { formatGmailAuthError, accountHasGmailReadonly } from "@/lib/gmail-scopes"
+import { clearStaleGoogleRefreshToken } from "@/lib/google-account-tokens"
 import { prisma } from "@/lib/prisma"
-import { getGmailOAuth2Client } from "./token-manager"
+import { getGmailSyncClient } from "./token-manager"
 import { syncGmailInbox } from "./gmail-sync"
 import { matchThread, normalizeSubject } from "./thread-matcher"
+import { incrementReplyStats } from "@/lib/user-stats"
 
 export interface ProcessResult {
   ok: boolean
@@ -25,7 +28,7 @@ export interface ProcessResult {
 
 export async function processInboundForUser(userId: string): Promise<ProcessResult> {
   // 1. Get a valid OAuth2 client
-  const tokenResult = await getGmailOAuth2Client(userId)
+  const tokenResult = await getGmailSyncClient(userId)
   if (!tokenResult.ok) {
     return { ok: false, userId, newMessages: 0, error: tokenResult.error }
   }
@@ -62,7 +65,19 @@ export async function processInboundForUser(userId: string): Promise<ProcessResu
       knownGmailThreadIds
     )
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err)
+    const raw = err instanceof Error ? err.message : String(err)
+    const error = formatGmailAuthError(raw)
+
+    if (raw.toLowerCase().includes("insufficient authentication scopes")) {
+      const account = await prisma.account.findFirst({
+        where: { userId, provider: "google" },
+        select: { scope: true },
+      })
+      if (accountHasGmailReadonly(account?.scope)) {
+        await clearStaleGoogleRefreshToken(userId)
+      }
+    }
+
     await prisma.mailboxSync.upsert({
       where: { userId },
       create: { userId, provider: "gmail", syncError: error },
@@ -140,13 +155,19 @@ export async function processInboundForUser(userId: string): Promise<ProcessResu
         select: { sentOutreachId: true },
       })
       if (thread?.sentOutreachId && !isNewThread) {
-        await prisma.sentOutreach.updateMany({
+        const updateResult = await prisma.sentOutreach.updateMany({
           where: {
             id: thread.sentOutreachId,
             responseReceivedAt: null,
           },
-          data: { responseReceivedAt: msg.receivedAt },
+          data: {
+            responseReceivedAt: msg.receivedAt,
+            responseSource: "GMAIL_SYNC",
+          },
         })
+        if (updateResult.count > 0) {
+          await incrementReplyStats(userId)
+        }
       }
 
       savedCount++

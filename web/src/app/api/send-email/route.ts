@@ -5,6 +5,8 @@ import { randomUUID } from "crypto"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { resolveUploadThingFileUrl } from "@/lib/uploadthing-server"
 import { incrementSentStats } from "@/lib/user-stats"
+import { resolveOutreachSendFields } from "@/lib/resolve-send-metadata"
+import { getGmailSendClient } from "@/lib/email-sync/token-manager"
 
 function chunkBase64(value: string) {
   return value.match(/.{1,76}/g)?.join("\n") ?? value
@@ -100,7 +102,7 @@ export async function POST(req: Request) {
       where: { key: token },
       include: {
         user: {
-          include: { accounts: true, candidateProfile: true }
+          include: { candidateProfile: true }
         }
       }
     })
@@ -109,14 +111,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid API Key" }, { status: 401 })
     }
 
-    const googleAccount = apiKey.user.accounts.find(a => a.provider === "google")
-    if (!googleAccount || !googleAccount.refresh_token) {
-      return NextResponse.json({
-        error: "No Gmail account connected or missing refresh token. Please sign in again.",
-      }, { status: 400 })
+    const tokenResult = await getGmailSendClient(apiKey.userId)
+    if (!tokenResult.ok) {
+      return NextResponse.json({ error: tokenResult.error }, { status: 400 })
     }
 
-    const { to, subject, body, postId, postUrl, platform, draftId, recipientHandle, recipientProfileUrl } = await req.json()
+    const { to, subject, body, postId, postUrl, platform, draftId, variantId, recipientHandle, recipientProfileUrl } = await req.json()
     const recipientEmail = typeof to === "string" ? extractEmailFromText(to) : null
     const resolvedRecipientName = recipientEmail ? inferRecipientNameFromEmail(recipientEmail) : null
     const normalizedSubject = typeof subject === "string" ? subject.trim() : ""
@@ -147,11 +147,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    )
-    oauth2Client.setCredentials({ refresh_token: googleAccount.refresh_token })
+    const oauth2Client = tokenResult.oauth2Client
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
     // ── Build the outbound MIME message ────────────────────────────────────────
@@ -209,6 +205,7 @@ export async function POST(req: Request) {
 
     // ── Persist SentOutreach + EmailThread + EmailMessage in one transaction ───
     const snippet = normalizedBody.slice(0, 300)
+    const sendMeta = await resolveOutreachSendFields(apiKey.userId, draftId, variantId)
 
     const sent = await prisma.sentOutreach.create({
       data: {
@@ -228,6 +225,11 @@ export async function POST(req: Request) {
         message: normalizedBody,
         actionMode: "EMAIL",
         status: "SENT",
+        toneUsed: sendMeta.toneUsed,
+        draftLengthUsed: sendMeta.draftLengthUsed,
+        matchScore: sendMeta.matchScore,
+        variantId: sendMeta.variantId,
+        industryTag: sendMeta.industryTag,
         emailThread: {
           create: {
             userId: apiKey.userId,

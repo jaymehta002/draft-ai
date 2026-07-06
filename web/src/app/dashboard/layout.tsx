@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
@@ -22,5 +23,5 @@ export default async function DashboardLayout({
     redirect("/api/auth/signin?callbackUrl=/dashboard")
   }
 
-  return children
+  return <Suspense fallback={null}>{children}</Suspense>
 }

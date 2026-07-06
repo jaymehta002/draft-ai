@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { siteConfig } from "@/lib/site"
+import { prisma } from "@/lib/prisma"
 import { MarketingHome } from "@/components/marketing/marketing-home"
 
 const title = "Draft AI — Personalized outreach for X and LinkedIn"
@@ -28,8 +29,14 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const session = await getServerSession(authOptions)
 
-  // Logged-in users have no reason to see the marketing page.
-  if (session?.user) {
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: { candidateProfile: true },
+    })
+    if (!user?.candidateProfile?.onboardingComplete) {
+      redirect("/onboarding")
+    }
     redirect("/dashboard")
   }
 

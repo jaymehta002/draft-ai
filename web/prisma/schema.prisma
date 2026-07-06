@@ -113,6 +113,9 @@ model CandidateProfile {
   salaryExpectation  String?
   workPreference     String?
   availability       String?
+  outreachTone       String?  @default("professional")
+  draftLength        String?  @default("medium")
+  outreachLanguage   String?  @default("en")
   onboardingComplete Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -136,15 +139,36 @@ model PostDraft {
   message             String        @db.Text
   draftResponse       Json
   profileVersion      String
+  industryTag         String?
   cacheHits           Int           @default(0)
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   sentOutreach SentOutreach?
+  variants     DraftVariant[]
 
   @@unique([userId, postId])
   @@index([userId, createdAt])
+}
+
+model DraftVariant {
+  id            String    @id @default(cuid())
+  postDraftId   String
+  variantIndex  Int
+  toneUsed      String
+  draftLength   String
+  message       String    @db.Text
+  subject       String?
+  draftResponse Json
+  selectedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  postDraft    PostDraft      @relation(fields: [postDraftId], references: [id], onDelete: Cascade)
+  sentOutreach SentOutreach[]
+
+  @@unique([postDraftId, variantIndex])
+  @@index([postDraftId])
 }
 
 model SentOutreach {
@@ -166,11 +190,20 @@ model SentOutreach {
   actionMode          String
   status              String
   responseReceivedAt  DateTime?
+  toneUsed            String?
+  draftLengthUsed     String?
+  matchScore          Int?
+  variantId           String?
+  responseSource      String?
+  industryTag         String?
   sentAt              DateTime  @default(now())
 
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  postDraft   PostDraft?   @relation(fields: [postDraftId], references: [id], onDelete: SetNull)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postDraft   PostDraft?    @relation(fields: [postDraftId], references: [id], onDelete: SetNull)
+  variant     DraftVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
   emailThread EmailThread?
+
+  @@index([variantId])
 
   @@index([userId, sentAt])
   @@index([postId])
@@ -179,19 +212,34 @@ model SentOutreach {
 }
 
 model UserStats {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-  sentToday      Int      @default(0)
-  sentThisWeek   Int      @default(0)
-  totalSent      Int      @default(0)
-  draftsToday    Int      @default(0)
-  lastResetDate  String   // YYYY-MM-DD format
-  lastResetWeek  String   // YYYY-Wxx format
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  sentToday       Int      @default(0)
+  sentThisWeek    Int      @default(0)
+  totalSent       Int      @default(0)
+  draftsToday     Int      @default(0)
+  totalReplied    Int      @default(0)
+  repliedThisWeek Int      @default(0)
+  replyRate7d     Float?
+  lastResetDate   String   // YYYY-MM-DD format
+  lastResetWeek   String   // YYYY-Wxx format
+  updatedAt       DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model WinningTemplate {
+  id           String   @id @default(cuid())
+  industryTag  String?
+  toneUsed     String?
+  excerpt      String   @db.Text
+  matchScore   Int?
+  isPublished  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([industryTag, isPublished])
 }
 
 // ─── Email Threading Engine ───────────────────────────────────────────────────

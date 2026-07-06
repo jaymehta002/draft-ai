@@ -56,6 +56,9 @@ export type CandidateProfileData = {
   salaryExpectation: string
   workPreference: string
   availability: string
+  outreachTone: string
+  draftLength: string
+  outreachLanguage: string
 }
 
 export const MONTHS = [
@@ -144,6 +147,9 @@ export function emptyProfile(): CandidateProfileData {
     salaryExpectation: "",
     workPreference: "",
     availability: "",
+    outreachTone: "professional",
+    draftLength: "medium",
+    outreachLanguage: "en",
   }
 }
 
@@ -199,7 +205,6 @@ export function syncLegacyFields(profile: CandidateProfileData): CandidateProfil
 export function isWorkExperienceValid(entry: WorkExperienceEntry): boolean {
   if (!entry.title.trim() || !entry.company.trim() || !entry.description.trim()) return false
   if (!entry.joinMonth || !entry.joinYear) return false
-  if (entry.isCurrent && !entry.currentCtc.trim()) return false
   if (!entry.isCurrent && entry.endYear && !entry.endMonth) return false
   return true
 }
@@ -305,6 +310,9 @@ export function parseCandidateFormData(formData: FormData): CandidateProfileData
     salaryExpectation: (formData.get("salaryExpectation") as string) || "",
     workPreference: (formData.get("workPreference") as string) || "",
     availability: (formData.get("availability") as string) || "",
+    outreachTone: (formData.get("outreachTone") as string) || "professional",
+    draftLength: (formData.get("draftLength") as string) || "medium",
+    outreachLanguage: (formData.get("outreachLanguage") as string) || "en",
   }
 
   return syncLegacyFields(profile)
@@ -315,14 +323,10 @@ const REQUIRED_SCALAR_FIELDS = [
   "phone",
   "location",
   "linkedinUrl",
-  "portfolioUrl",
-  "githubUrl",
   "yearsExperience",
   "summary",
   "education",
   "skills",
-  "resumeFileName",
-  "resumeContent",
   "desiredRoles",
   "salaryExpectation",
   "workPreference",
@@ -344,17 +348,13 @@ const REQUIRED_FIELD_META: Record<
   phone: { label: "Phone", tab: "Basics" },
   location: { label: "Location", tab: "Basics" },
   linkedinUrl: { label: "LinkedIn URL", tab: "Links" },
-  portfolioUrl: { label: "Portfolio URL", tab: "Links" },
-  githubUrl: { label: "GitHub URL", tab: "Links" },
   yearsExperience: { label: "Years of experience", tab: "Basics" },
   summary: { label: "Professional summary", tab: "Basics" },
   education: { label: "Education", tab: "Basics" },
   skills: { label: "Skills", tab: "Basics" },
-  resumeFileName: { label: "Resume file", tab: "Resume" },
-  resumeContent: { label: "Resume text", tab: "Resume" },
   desiredRoles: { label: "Desired roles", tab: "Preferences" },
   salaryExpectation: { label: "Salary expectation", tab: "Preferences" },
-  workPreference: { label: "Work preference", tab: "Preferences" },
+  workPreference: { label: "Work location", tab: "Preferences" },
   availability: { label: "Availability", tab: "Preferences" },
 }
 
@@ -394,9 +394,7 @@ function getWorkExperienceIssue(
   if (!entry.company.trim()) missing.push("company")
   if (!entry.description.trim()) missing.push("description")
   if (!entry.joinMonth || !entry.joinYear) missing.push("start month/year")
-  if (entry.isCurrent) {
-    if (!entry.currentCtc.trim()) missing.push("current CTC")
-  } else if (!entry.endMonth || !entry.endYear) {
+  if (!entry.isCurrent && (!entry.endMonth || !entry.endYear)) {
     missing.push("end month/year")
   }
 
@@ -457,6 +455,7 @@ export function profileToFormData(profile: CandidateProfileData): FormData {
     "currentTitle", "yearsExperience", "summary", "workExperience", "education",
     "skills", "certifications", "resumeFileName", "resumeMimeType", "resumeStorageKey", "resumeFileUrl", "resumeFileSize", "resumeFileData", "resumeContent",
     "desiredRoles", "salaryExpectation", "workPreference", "availability",
+    "outreachTone", "draftLength", "outreachLanguage",
   ]
   for (const key of scalarKeys) {
     formData.append(key, String(synced[key]))

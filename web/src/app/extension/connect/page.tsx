@@ -288,16 +288,21 @@ function ExtensionConnectContent() {
         }
 
         try {
-          window.postMessage(
-            {
-              type: AUTH_MESSAGE_TYPE,
-              state: data?.state ?? currentState,
-              apiKey: data?.apiKey,
-              email: data?.email,
-              name: data?.name,
-            },
-            window.location.origin
-          )
+          const authMsg = {
+            type: AUTH_MESSAGE_TYPE,
+            state: data?.state ?? currentState,
+            apiKey: data?.apiKey,
+            email: data?.email,
+            name: data?.name,
+          }
+          // Post immediately
+          window.postMessage(authMsg, window.location.origin)
+          
+          // Post a few more times to ensure the content script catches it
+          // in case of any race conditions during injection
+          setTimeout(() => window.postMessage(authMsg, window.location.origin), 500)
+          setTimeout(() => window.postMessage(authMsg, window.location.origin), 1500)
+          setTimeout(() => window.postMessage(authMsg, window.location.origin), 3000)
         } catch {
           // Connection still succeeded server-side even if postMessage throws.
         }

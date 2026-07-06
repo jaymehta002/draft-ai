@@ -9,6 +9,8 @@ import {
 import { openai, OPENAI_MODEL } from "@/lib/openai"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { incrementDraftStats } from "@/lib/user-stats"
+import { buildDraftSystemPrompt } from "@/lib/draft-prompt"
+import { classifyIndustry } from "@/lib/industry-classifier"
 
 function normalizeEmailGreeting(message: string, recipientName: string | null) {
   const cleaned = message.trim()
@@ -121,54 +123,28 @@ export async function POST(req: Request) {
       return NextResponse.json(draftResultToResponse(existingDraft, true))
     }
 
-    const systemPrompt = `
-You are an expert career coach helping a job candidate draft a highly personalized outreach message in response to a job-related social media post.
+    const industryTag = classifyIndustry({
+      postText: text,
+      desiredRoles: profile.desiredRoles,
+      skills: profile.skills,
+    })
 
-Candidate profile:
-- Name: ${profile.fullName || "Unknown"}
-- Current title: ${profile.currentTitle || "N/A"}
-- Years of experience: ${profile.yearsExperience ?? "N/A"}
-- Location: ${profile.location || "N/A"}
-- Skills: ${profile.skills || "N/A"}
-- Summary: ${profile.summary || "N/A"}
-- Work experience: ${profile.workExperience || "N/A"}
-- Education: ${profile.education || "N/A"}
-- Desired roles: ${profile.desiredRoles || "N/A"}
-- Salary expectation: ${profile.salaryExpectation || "N/A"}
-- Work preference: ${profile.workPreference || "N/A"}
-- Resume highlights: ${profile.resumeContent?.slice(0, 2000) || "N/A"}
-
-Post / opportunity context:
-- Poster name: ${name || "Unknown"}
-- Extracted recipient email: ${normalizedExtractedEmail || "None"}
-- Email addressee inferred from the email address: ${resolvedEmailRecipientName || "Unknown"}
-- Post text: "${text}"
-
-Instructions:
-1. Determine if the post is relevant for this candidate (is_hiring_relevant). E.g. hiring post, job opening, recruiter looking for their stack, or networking opportunity.
-2. Provide a match_score from 0-100 that reflects how well the opportunity fits the candidate profile.
-3. Write a short match_reason (max 20 words) explaining the score.
-4. Provide 2-3 fit_highlights as short phrases grounded in the candidate profile or post context.
-5. Determine the action_mode. If an email is present, action_mode must be "EMAIL". Otherwise, it must be "DM".
-6. Draft the outreach_payload from the candidate's perspective — expressing interest, highlighting relevant experience/skills, and showing genuine engagement with what the poster wrote.
-7. If EMAIL, the greeting must follow the recipient email, not automatically the social post author.
-8. If EMAIL and the email addressee inferred from the email address is known, address that person by name.
-9. If EMAIL and the email addressee is unknown or uncertain, start with a generic greeting like "Hello" and do not guess or invent a person's name.
-10. If DM, subject_line should be null, and message_content should be shorter and punchier.
-11. Return ONLY a valid JSON object matching this schema exactly:
-{
-  "detected_name": string,
-  "is_hiring_relevant": boolean,
-  "match_score": number,
-  "match_reason": string,
-  "fit_highlights": string[],
-  "action_mode": "EMAIL" | "DM",
-  "outreach_payload": {
-    "subject_line": string | null,
-    "message_content": string
-  }
-}
-`
+    const systemPrompt = buildDraftSystemPrompt(
+      profile,
+      {
+        text,
+        name,
+        extractedEmail: normalizedExtractedEmail,
+        emailRecipientName: resolvedEmailRecipientName,
+        hasEmail: resolvedHasEmail,
+      },
+      {
+        outreachTone: profile.outreachTone,
+        draftLength: profile.draftLength,
+        outreachLanguage: profile.outreachLanguage,
+      },
+      industryTag
+    )
 
     const completion = await openai.chat.completions.create({
       model: OPENAI_MODEL,
@@ -216,6 +192,7 @@ Instructions:
         message,
         draftResponse: result,
         profileVersion,
+        industryTag,
         cacheHits: 0,
       },
       create: {
@@ -233,6 +210,7 @@ Instructions:
         message,
         draftResponse: result,
         profileVersion,
+        industryTag,
       },
     })
 

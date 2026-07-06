@@ -1,16 +1,18 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { DraftAIBrand } from "@/components/draft-ai-logo"
+import { DraftAIBrand } from "@/components/draft-ai-brand"
 import { cn } from "@/lib/utils"
 
 export function OnboardingShell({
   progress,
+  stepLabel,
   children,
   footer,
   className,
 }: {
   progress: number
+  stepLabel?: string
   children: React.ReactNode
   footer?: React.ReactNode
   className?: string
@@ -28,6 +30,11 @@ export function OnboardingShell({
       <div className={cn("flex-1 flex flex-col px-4 sm:px-8 pt-12 pb-32", className)}>
         <div className="max-w-2xl mx-auto w-full mb-10">
           <DraftAIBrand subtitle="Profile setup" />
+          {stepLabel && (
+            <p className="mt-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              {stepLabel}
+            </p>
+          )}
         </div>
         <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full">{children}</div>
       </div>

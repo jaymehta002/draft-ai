@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { incrementSentStats } from "@/lib/user-stats"
+import { resolveOutreachSendFields } from "@/lib/resolve-send-metadata"
 
 export async function POST(req: Request) {
   try {
@@ -18,11 +19,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid API Key" }, { status: 401 })
     }
 
-    const { postId, postUrl, platform, draftId, recipientName, recipientHandle, recipientProfileUrl, message, actionMode } = await req.json()
+    const {
+      postId,
+      postUrl,
+      platform,
+      draftId,
+      variantId,
+      recipientName,
+      recipientHandle,
+      recipientProfileUrl,
+      message,
+      actionMode,
+    } = await req.json()
 
     if (!postId || !message) {
       return NextResponse.json({ error: "Missing postId or message" }, { status: 400 })
     }
+
+    const sendMeta = await resolveOutreachSendFields(apiKey.userId, draftId, variantId)
 
     const sent = await prisma.sentOutreach.create({
       data: {
@@ -37,10 +51,14 @@ export async function POST(req: Request) {
         message,
         actionMode: actionMode || "DM",
         status: "COPIED",
+        toneUsed: sendMeta.toneUsed,
+        draftLengthUsed: sendMeta.draftLengthUsed,
+        matchScore: sendMeta.matchScore,
+        variantId: sendMeta.variantId,
+        industryTag: sendMeta.industryTag,
       },
     })
 
-    // Increment precomputed stats
     await incrementSentStats(apiKey.userId)
 
     return NextResponse.json({ success: true, sentId: sent.id })

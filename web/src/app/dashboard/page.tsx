@@ -2,13 +2,13 @@
 
 import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { signIn } from "next-auth/react"
 import {
   Copy,
   Mail,
   Sparkles,
   TrendingUp,
-  Zap,
   ExternalLink,
   ArrowUpRight,
   Check,
@@ -32,6 +32,9 @@ import {
   getDraftsData,
   getEmailsData,
   getDMsData,
+  getIntegrationStatus,
+  markDMResponded,
+  getWinningTemplates,
 } from "@/app/actions"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
 import {
@@ -55,6 +58,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FadeIn } from "@/components/motion"
+import { PreferencesSection } from "@/components/dashboard/preferences-section"
 import { cn } from "@/lib/utils"
 
 type DashboardData = NonNullable<Awaited<ReturnType<typeof getDashboardData>>>
@@ -83,10 +87,25 @@ const SECTION_LABELS: Record<DashboardSection, string> = {
   extension: "Integrations",
 }
 
+const VALID_SECTIONS: DashboardSection[] = [
+  "analytics", "drafts", "emails", "dms", "profile", "extension",
+]
+
+function parseSection(value: string | null): DashboardSection {
+  if (value && VALID_SECTIONS.includes(value as DashboardSection)) {
+    return value as DashboardSection
+  }
+  return "analytics"
+}
+
 export default function Dashboard() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [section, setSection] = useState<DashboardSection>("analytics")
+  const searchParams = useSearchParams()
+  const [section, setSection] = useState<DashboardSection>(() =>
+    parseSection(searchParams.get("section"))
+  )
+  const [profileTab, setProfileTab] = useState(() => searchParams.get("tab") || "profile")
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [candidateProfile, setCandidateProfile] = useState<CandidateProfile>(null)
   const [profileData, setProfileData] = useState<CandidateProfileData | null>(null)
@@ -98,15 +117,40 @@ export default function Dashboard() {
   const [draftsData, setDraftsData] = useState<DraftsData | null>(null)
   const [emailsData, setEmailsData] = useState<EmailsData | null>(null)
   const [dmsData, setDMsData] = useState<DMsData | null>(null)
+  const [integrationStatus, setIntegrationStatus] = useState<Awaited<ReturnType<typeof getIntegrationStatus>> | null>(null)
+  const [winningTemplates, setWinningTemplates] = useState<Awaited<ReturnType<typeof getWinningTemplates>>>([])
+  const [showAdvancedConnection, setShowAdvancedConnection] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const navigateSection = useCallback(
+    (next: DashboardSection, tab?: string) => {
+      setSection(next)
+      if (tab) setProfileTab(tab)
+      const params = new URLSearchParams()
+      if (next !== "analytics") params.set("section", next)
+      if (tab && next === "profile") params.set("tab", tab)
+      const qs = params.toString()
+      router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false })
+    },
+    [router]
+  )
+
+  useEffect(() => {
+    const urlSection = parseSection(searchParams.get("section"))
+    const urlTab = searchParams.get("tab") || "profile"
+    setSection(urlSection)
+    if (urlSection === "profile") setProfileTab(urlTab)
+  }, [searchParams])
+
   const loadData = useCallback(async () => {
-    const [data, stats, drafts, emails, dms] = await Promise.all([
+    const [data, stats, drafts, emails, dms, integrations, templates] = await Promise.all([
       getDashboardData(),
       getAnalyticsData(),
       getDraftsData(),
       getEmailsData(),
       getDMsData(),
+      getIntegrationStatus(),
+      getWinningTemplates(),
     ])
 
     if (!data?.onboardingComplete) {
@@ -125,6 +169,8 @@ export default function Dashboard() {
     setDraftsData(drafts)
     setEmailsData(emails)
     setDMsData(dms)
+    setIntegrationStatus(integrations)
+    setWinningTemplates(templates)
     setLoading(false)
   }, [router])
 
@@ -188,6 +234,17 @@ export default function Dashboard() {
     setAnalytics(stats)
   }
 
+  const refreshDMs = async () => {
+    const [dms, stats] = await Promise.all([getDMsData(), getAnalyticsData()])
+    setDMsData(dms)
+    setAnalytics(stats)
+  }
+
+  const handleMarkDMReplied = async (outreachId: string) => {
+    await markDMResponded(outreachId)
+    await refreshDMs()
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen bg-background">
@@ -218,7 +275,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background flex">
       <AppSidebar
         active={section}
-        onNavigate={setSection}
+        onNavigate={navigateSection}
         mobileOpen={mobileNavOpen}
         onMobileClose={() => setMobileNavOpen(false)}
         counts={{
@@ -250,7 +307,12 @@ export default function Dashboard() {
               email={session?.user?.email}
               image={session?.user?.image}
               title={candidateProfile?.currentTitle}
-              onNavigate={(s) => setSection(s as DashboardSection)}
+              onNavigate={(s) => {
+                if (s === "profile:preferences") navigateSection("profile", "preferences")
+                else if (s === "profile") navigateSection("profile", "profile")
+                else if (s === "extension") navigateSection("extension")
+                else navigateSection(s as DashboardSection)
+              }}
             />
           </div>
         </header>
@@ -268,43 +330,99 @@ export default function Dashboard() {
                     Your outreach performance at a glance
                   </p>
                 </div>
-                <Button onClick={() => setSection("drafts")} className="gap-2">
+                <Button onClick={() => navigateSection("drafts")} className="gap-2">
                   <Sparkles className="size-4" />
                   Open Studio
                 </Button>
               </div>
 
-              {/* 4-column stat cards */}
+              {/* Weekly wins */}
+              {(analytics.sentThisWeek ?? 0) > 0 && (
+                <Card className="border-primary/20 bg-primary/5 shadow-sm">
+                  <CardContent className="py-4">
+                    <p className="text-sm text-foreground">
+                      You sent{" "}
+                      <span className="font-semibold text-primary">{analytics.sentThisWeek}</span>{" "}
+                      thoughtful message{analytics.sentThisWeek !== 1 ? "s" : ""} this week. Keep going.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* North star + activity stats */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard
+                  icon={TrendingUp}
+                  label="Reply rate"
+                  value={`${analytics.replyRate ?? 0}%`}
+                  sub={`${analytics.replyRate7d ?? 0}% last 7 days · ${analytics.totalReplied ?? 0} replied`}
+                  color="primary"
+                />
                 <StatCard
                   icon={Sparkles}
                   label="Pending drafts"
                   value={draftCount}
                   color="primary"
-                  onClick={() => setSection("drafts")}
+                  onClick={() => navigateSection("drafts")}
                 />
                 <StatCard
                   icon={Mail}
                   label="Emails sent"
                   value={analytics.emailsSent}
                   color="chart-2"
-                  onClick={() => setSection("emails")}
+                  onClick={() => navigateSection("emails")}
                 />
                 <StatCard
                   icon={Copy}
                   label="DMs copied"
                   value={analytics.dmsCopied}
                   color="chart-1"
-                  onClick={() => setSection("dms")}
-                />
-                <StatCard
-                  icon={Zap}
-                  label="Cache hits"
-                  value={analytics.cacheHits}
-                  sub={`~${analytics.tokensSavedEstimate.toLocaleString()} tokens saved`}
-                  color="chart-4"
+                  onClick={() => navigateSection("dms")}
                 />
               </div>
+
+              {/* Tone insights */}
+              {(analytics.toneInsights?.length ?? 0) > 0 && (
+                <Card className="border-border shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardDescription className="text-[10px] font-semibold uppercase tracking-widest flex items-center gap-2">
+                      <TrendingUp className="size-3" /> What&apos;s working
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {analytics.toneInsights.map((insight) => (
+                      <p key={insight.tone} className="text-sm text-muted-foreground">
+                        {insight.message}
+                      </p>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {winningTemplates.length > 0 && (
+                <Card className="border-border shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardDescription className="text-[10px] font-semibold uppercase tracking-widest">
+                      Messages that got replies
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {winningTemplates.map((t) => (
+                      <blockquote
+                        key={t.id}
+                        className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground italic"
+                      >
+                        &ldquo;{t.excerpt}&rdquo;
+                        {t.toneUsed && (
+                          <span className="mt-1 block not-italic text-[10px] text-foreground/70">
+                            {t.toneUsed} tone{t.matchScore ? ` · ${t.matchScore}% match` : ""}
+                          </span>
+                        )}
+                      </blockquote>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Activity grid */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -377,7 +495,9 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {Object.entries(analytics.platformBreakdown).length === 0 ? (
-                      <p className="text-xs text-muted-foreground py-4 text-center">No outreach yet</p>
+                      <p className="text-xs text-muted-foreground py-4 text-center">
+                        No messages yet — your first thoughtful note is one draft away.
+                      </p>
                     ) : (
                       Object.entries(analytics.platformBreakdown).map(([platform, count]) => {
                         const total = Object.values(analytics.platformBreakdown).reduce((a, b) => a + b, 0)
@@ -412,19 +532,19 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setSection("drafts")} className="gap-2">
+                    <Button variant="outline" size="sm" onClick={() => navigateSection("drafts")} className="gap-2">
                       <Sparkles className="size-3.5" />
                       Outreach Studio
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setSection("emails")} className="gap-2">
+                    <Button variant="outline" size="sm" onClick={() => navigateSection("emails")} className="gap-2">
                       <Mail className="size-3.5" />
                       View inbox
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setSection("dms")} className="gap-2">
+                    <Button variant="outline" size="sm" onClick={() => navigateSection("dms")} className="gap-2">
                       <Copy className="size-3.5" />
                       View DMs
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setSection("extension")} className="gap-2">
+                    <Button variant="outline" size="sm" onClick={() => navigateSection("extension")} className="gap-2">
                       <ExternalLink className="size-3.5" />
                       Integrations
                     </Button>
@@ -467,7 +587,17 @@ export default function Dashboard() {
                   Refresh
                 </Button>
               </div>
-              <EmailsPanel emails={emailsData.emails} onRefresh={refreshEmails} />
+              <EmailsPanel
+                emails={emailsData.emails}
+                onRefresh={refreshEmails}
+                gmailMissingReadonly={integrationStatus?.gmailMissingReadonly}
+                linkHints={{
+                  email: session?.user?.email ?? null,
+                  linkedinUrl: profile?.linkedinUrl || null,
+                  githubUrl: profile?.githubUrl || null,
+                  portfolioUrl: profile?.portfolioUrl || null,
+                }}
+              />
             </FadeIn>
           )}
 
@@ -480,7 +610,7 @@ export default function Dashboard() {
                   Your direct message outreach history
                 </p>
               </div>
-              <DMsPanel dms={dmsData.dms} />
+              <DMsPanel dms={dmsData.dms} onMarkReplied={handleMarkDMReplied} />
             </FadeIn>
           )}
 
@@ -492,7 +622,7 @@ export default function Dashboard() {
                 <p className="mt-1 text-sm text-muted-foreground">Manage your profile and preferences</p>
               </div>
 
-              <Tabs defaultValue="profile">
+              <Tabs value={profileTab} onValueChange={(v) => navigateSection("profile", v)}>
                 <TabsList className="mb-6">
                   <TabsTrigger value="profile" className="gap-2">
                     <User className="size-3.5" />
@@ -543,37 +673,11 @@ export default function Dashboard() {
                 </TabsContent>
 
                 <TabsContent value="preferences">
-                  <Card className="border-border shadow-sm">
-                    <CardHeader>
-                      <CardTitle className="text-base">Preferences</CardTitle>
-                      <CardDescription>
-                        Customize how Draft AI generates outreach for you.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex items-center justify-between py-3 border-b border-border/50">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Tone</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Adjust the writing style of generated drafts</p>
-                        </div>
-                        <Badge variant="secondary">Professional</Badge>
-                      </div>
-                      <div className="flex items-center justify-between py-3 border-b border-border/50">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Draft length</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Preferred message length for AI outputs</p>
-                        </div>
-                        <Badge variant="secondary">Medium</Badge>
-                      </div>
-                      <div className="flex items-center justify-between py-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Language</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Language for generated outreach</p>
-                        </div>
-                        <Badge variant="secondary">English</Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <PreferencesSection
+                    outreachTone={profile.outreachTone}
+                    draftLength={profile.draftLength}
+                    outreachLanguage={profile.outreachLanguage}
+                  />
                 </TabsContent>
 
                 <TabsContent value="security">
@@ -617,60 +721,64 @@ export default function Dashboard() {
                 <IntegrationCard
                   icon={<Globe className="size-5" />}
                   name="Chrome Extension"
-                  description="Generate personalized drafts directly from X and LinkedIn posts."
+                  description="Generate personalized drafts directly from X and LinkedIn feed posts."
                   status={apiKey ? "connected" : "disconnected"}
-                  statusLabel={apiKey ? "Connected" : "Not configured"}
+                  statusLabel={apiKey ? "Connection code ready" : "Not connected"}
                   action={
-                    <Button size="sm" variant={apiKey ? "outline" : "default"} asChild>
-                      <a href="/extension/connect" className="gap-1.5 inline-flex items-center">
-                        <ExternalLink className="size-3.5" />
-                        {apiKey ? "Reconnect" : "Connect"}
-                      </a>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowAdvancedConnection((v) => !v)}
+                    >
+                      {showAdvancedConnection ? "Hide details" : "Connection details"}
                     </Button>
                   }
                   extra={
                     apiKey ? (
                       <div className="mt-3 space-y-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">API Key</p>
-                        <div className="flex gap-2">
-                          <Input
-                            readOnly
-                            value={apiKey}
-                            className="font-mono text-[11px] h-8 bg-muted/30 border-border/60"
-                          />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className={cn(
-                              "size-8 shrink-0 transition-all duration-200",
-                              apiKeyCopied && "border-transparent bg-primary/10 text-primary"
-                            )}
-                            onClick={handleCopyApiKey}
-                          >
-                            {apiKeyCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                          </Button>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs text-muted-foreground"
-                          onClick={handleGenerateKey}
-                        >
-                          <KeyRound className="size-3 mr-1.5" />
-                          Regenerate key
-                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Open the extension popup and tap Connect — no manual code needed for most users.
+                        </p>
+                        {showAdvancedConnection && (
+                          <>
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                              Connection code (advanced)
+                            </p>
+                            <div className="flex gap-2">
+                              <Input
+                                readOnly
+                                value={apiKey}
+                                className="font-mono text-[11px] h-8 bg-muted/30 border-border/60"
+                              />
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className={cn(
+                                  "size-8 shrink-0 transition-[border-color,background-color] duration-200",
+                                  apiKeyCopied && "border-transparent bg-primary/10 text-primary"
+                                )}
+                                onClick={handleCopyApiKey}
+                              >
+                                {apiKeyCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                              </Button>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-muted-foreground"
+                              onClick={handleGenerateKey}
+                            >
+                              <KeyRound className="size-3 mr-1.5" />
+                              Regenerate connection code
+                            </Button>
+                          </>
+                        )}
                       </div>
                     ) : (
                       <div className="mt-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full gap-2"
-                          onClick={handleGenerateKey}
-                        >
-                          <KeyRound className="size-3.5" />
-                          Generate API key
-                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Install the extension, then use Connect in the popup to link your account.
+                        </p>
                       </div>
                     )
                   }
@@ -680,46 +788,59 @@ export default function Dashboard() {
                 <IntegrationCard
                   icon={<Mail className="size-5" />}
                   name="Gmail"
-                  description="Send outreach emails directly from your Gmail account via Draft AI."
-                  status="connected"
-                  statusLabel="Connected"
+                  description={
+                    integrationStatus?.gmailMissingReadonly
+                      ? "Reply tracking needs inbox read access. Reconnect to enable sync."
+                      : "Send thoughtful emails through your own Gmail — you approve every message."
+                  }
+                  status={
+                    integrationStatus?.gmailConnected
+                      ? "connected"
+                      : integrationStatus?.gmailNeedsReconnect ||
+                          integrationStatus?.gmailMissingReadonly
+                        ? "error"
+                        : "disconnected"
+                  }
+                  statusLabel={
+                    integrationStatus?.gmailConnected
+                      ? "Connected"
+                      : integrationStatus?.gmailMissingReadonly
+                        ? "Needs inbox access"
+                        : integrationStatus?.gmailNeedsReconnect
+                          ? "Needs reconnect"
+                          : "Not enabled"
+                  }
                   action={
-                    <Button size="sm" variant="outline">
-                      Manage
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        signIn("google", {
+                          callbackUrl: integrationStatus?.gmailMissingReadonly
+                            ? "/dashboard?section=emails"
+                            : "/dashboard?section=extension",
+                        })
+                      }
+                    >
+                      {integrationStatus?.gmailMissingReadonly ? "Reconnect" : "Manage"}
                     </Button>
                   }
                 />
 
-                {/* LinkedIn */}
                 <IntegrationCard
                   icon={<Link2 className="size-5" />}
                   name="LinkedIn"
-                  description="Generate DMs and connection messages for LinkedIn profiles."
-                  status="connected"
-                  statusLabel="Via extension"
-                  action={
-                    <Button size="sm" variant="outline" asChild>
-                      <a href="/extension/connect" className="gap-1.5 inline-flex items-center">
-                        Configure
-                      </a>
-                    </Button>
-                  }
+                  description="Draft messages for LinkedIn feed posts via the Chrome extension."
+                  status={apiKey ? "connected" : "disconnected"}
+                  statusLabel={apiKey ? "Via extension" : "Connect extension first"}
                 />
 
-                {/* Twitter / X */}
                 <IntegrationCard
                   icon={<XIcon className="size-5" />}
                   name="X (Twitter)"
-                  description="Generate DMs for X users based on their posts and profile."
-                  status="connected"
-                  statusLabel="Via extension"
-                  action={
-                    <Button size="sm" variant="outline" asChild>
-                      <a href="/extension/connect" className="gap-1.5 inline-flex items-center">
-                        Configure
-                      </a>
-                    </Button>
-                  }
+                  description="Draft messages for X feed posts via the Chrome extension."
+                  status={apiKey ? "connected" : "disconnected"}
+                  statusLabel={apiKey ? "Via extension" : "Connect extension first"}
                 />
               </div>
             </FadeIn>
@@ -753,7 +874,7 @@ function StatCard({
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
-  value: number
+  value: number | string
   sub?: string
   color?: StatColor
   onClick?: () => void

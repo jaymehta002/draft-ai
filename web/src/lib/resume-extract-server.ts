@@ -14,7 +14,18 @@ Return ONLY a valid JSON object with this exact schema:
   "current_position": string | null,
   "years_experience": number | null,
   "education": string[],
-  "past_companies": string[],
+  "work_experience": [
+    {
+      "title": string,
+      "company": string,
+      "description": string,
+      "start_month": string | null,
+      "start_year": string | null,
+      "end_month": string | null,
+      "end_year": string | null,
+      "is_current": boolean
+    }
+  ],
   "skills": string[],
   "summary": string | null,
   "certifications": string[],
@@ -24,10 +35,27 @@ Return ONLY a valid JSON object with this exact schema:
   "confidence": "high" | "medium" | "low"
 }
 
+Example work_experience entry:
+{
+  "title": "Senior Software Engineer",
+  "company": "Acme Corp",
+  "description": "Led migration to microservices. Reduced API latency by 40%. Mentored 3 engineers.",
+  "start_month": "03",
+  "start_year": "2021",
+  "end_month": null,
+  "end_year": null,
+  "is_current": true
+}
+
 Rules:
 - Only extract information explicitly present in the resume. Do not guess or infer.
+- work_experience: one object per role. Same company with different titles = separate entries.
+- title = job title only. company = employer name only. description = responsibilities and achievements only — NEVER repeat the title or company in description.
+- start_month / end_month: two-digit strings "01" through "12", or null if unknown.
+- start_year / end_year: four-digit year strings e.g. "2019", or null if unknown.
+- is_current: true only for the role the candidate currently holds. When is_current is true, end_month and end_year must be null.
+- Order work_experience most recent first.
 - For years_experience, calculate from work history dates if stated; otherwise null.
-- past_companies: list employers with role and dates when available, one entry per company.
 - education: one entry per degree/program with institution and year if available.
 - skills: short skill strings only (e.g. "React", "Python").
 - city: the candidate's current city only, not full address.

@@ -10,6 +10,9 @@ export type StepId =
   | "work"
   | "projects"
   | "certificates"
+  | "tone"
+  | "preview-draft"
+  | "whats-next"
   | "review"
   | { type: "question"; field: keyof CandidateProfileData }
 
@@ -41,6 +44,9 @@ export function buildStepQueue(
   steps.push("projects")
   steps.push("certificates")
   steps.push("review")
+  steps.push("tone")
+  steps.push("preview-draft")
+  steps.push("whats-next")
 
   return steps
 }
@@ -55,6 +61,33 @@ export function getStepField(step: StepId): keyof CandidateProfileData | null {
   return null
 }
 
+export function getStepLabel(step: StepId, stepIndex: number, totalSteps: number): string {
+  const counter = `Step ${stepIndex + 1} of ${totalSteps}`
+  if (typeof step === "object" && step.type === "question") {
+    const basics = ["fullName", "phone", "currentTitle", "yearsExperience", "summary", "education"]
+    const links = ["linkedinUrl", "portfolioUrl", "githubUrl"]
+    const prefs = ["desiredRoles", "salaryExpectation", "workPreference", "availability"]
+    if (basics.includes(step.field)) return `${counter} · Basics`
+    if (links.includes(step.field)) return `${counter} · Links`
+    if (prefs.includes(step.field)) return `${counter} · Preferences`
+    return counter
+  }
+  if (typeof step !== "string") return counter
+  const groups: Record<string, string> = {
+    reveal: "Review",
+    location: "Basics",
+    skills: "Experience",
+    work: "Experience",
+    projects: "Experience",
+    certificates: "Experience",
+    review: "Review",
+    tone: "Preferences",
+    "preview-draft": "Preview",
+    "whats-next": "Get started",
+  }
+  return `${counter} · ${groups[step] || "Setup"}`
+}
+
 export function canContinueStep(step: StepId, profile: CandidateProfileData, skillsLoading: boolean): boolean {
   if (step === "reveal") return true
   if (step === "location") {
@@ -67,6 +100,9 @@ export function canContinueStep(step: StepId, profile: CandidateProfileData, ski
     return profile.workExperiences.some(isWorkExperienceValid)
   }
   if (step === "projects" || step === "certificates") return true
+  if (step === "tone") return true
+  if (step === "preview-draft") return true
+  if (step === "whats-next") return true
   if (step === "review") return true
 
   const field = getStepField(step)

@@ -7,9 +7,11 @@ import type { WorkExperienceEntry } from "@/lib/candidate-profile"
 export function WorkExperienceStep({
   entries,
   onChange,
+  aiFilled,
 }: {
   entries: WorkExperienceEntry[]
   onChange: (entries: WorkExperienceEntry[]) => void
+  aiFilled?: boolean
 }) {
   return (
     <motion.div
@@ -17,7 +19,7 @@ export function WorkExperienceStep({
       animate={{ opacity: 1, y: 0 }}
       className="flex-1 flex flex-col"
     >
-      <WorkExperienceEditor entries={entries} onChange={onChange} />
+      <WorkExperienceEditor entries={entries} onChange={onChange} aiFilled={aiFilled} />
     </motion.div>
   )
 }

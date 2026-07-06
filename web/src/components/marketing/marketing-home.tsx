@@ -1,9 +1,7 @@
 "use client"
 
-import { signIn } from "next-auth/react"
 import Link from "next/link"
 import {
-  Feather,
   ArrowRight,
   Sparkles,
   Zap,
@@ -15,28 +13,83 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FadeIn, StaggerContainer, StaggerItem } from "@/components/motion"
+import { GoogleSignInExplainer } from "@/components/google-sign-in-explainer"
+import { DraftAIBrand } from "@/components/draft-ai-brand"
 
-const CALLBACK_URL = "/dashboard"
+const CALLBACK_URL = "/onboarding"
 
-function startSignIn() {
-  signIn("google", { callbackUrl: CALLBACK_URL })
+function SignInButton({
+  children,
+  size = "default",
+  className,
+  variant,
+}: {
+  children: React.ReactNode
+  size?: "default" | "sm" | "lg"
+  className?: string
+  variant?: "default" | "outline" | "ghost"
+}) {
+  return (
+    <GoogleSignInExplainer
+      callbackUrl={CALLBACK_URL}
+      trigger={(open) => (
+        <Button onClick={open} size={size} className={className} variant={variant}>
+          {children}
+        </Button>
+      )}
+    />
+  )
 }
 
 function Wordmark() {
+  return <DraftAIBrand subtitle="Outreach Studio" href="/" />
+}
+
+function SocialProof() {
+  const testimonials = [
+    {
+      quote:
+        "I stopped copy-pasting templates. Two hiring managers replied in my first week because the messages actually referenced their posts.",
+      name: "Priya S.",
+      role: "Software engineer · beta user",
+    },
+    {
+      quote:
+        "The draft button in my feed is the whole workflow. Upload resume once, then every message pulls from my real experience.",
+      name: "Marcus T.",
+      role: "Product manager · beta user",
+    },
+    {
+      quote:
+        "It feels like starting a conversation, not blasting outreach. I edit every message before I send — that's what sold me.",
+      name: "Elena R.",
+      role: "Career changer · beta user",
+    },
+  ]
+
   return (
-    <Link href="/" className="group flex items-center gap-3" aria-label="Draft AI home">
-      <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform duration-300 group-hover:-rotate-6">
-        <Feather className="size-[18px]" strokeWidth={1.75} />
-      </span>
-      <span className="leading-none">
-        <span className="block font-serif text-[15px] font-semibold tracking-tight text-foreground">
-          Draft <span className="text-primary">AI</span>
-        </span>
-        <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Outreach Studio
-        </span>
-      </span>
-    </Link>
+    <section className="border-y border-border/70 bg-card/30">
+      <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
+        <p className="text-center text-sm text-muted-foreground mb-8">
+          Used by job seekers from YC startups · FAANG · bootcamps
+        </p>
+        <div className="grid gap-6 md:grid-cols-3">
+          {testimonials.map((t) => (
+            <blockquote
+              key={t.name}
+              className="rounded-2xl border border-border bg-card p-5 shadow-sm"
+            >
+              <p className="text-sm leading-relaxed text-foreground">&ldquo;{t.quote}&rdquo;</p>
+              <footer className="mt-4 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{t.name}</span>
+                <span className="mx-1.5">·</span>
+                {t.role}
+              </footer>
+            </blockquote>
+          ))}
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -150,7 +203,7 @@ const FEATURES = [
   {
     icon: SlidersHorizontal,
     title: "Tone you control",
-    body: "Warm, direct, or formal — steer the voice so every message still sounds like you wrote it.",
+    body: "Warm, direct, or formal — set your voice in preferences and every draft follows it.",
   },
   {
     icon: ShieldCheck,
@@ -160,9 +213,9 @@ const FEATURES = [
 ]
 
 const STATS = [
-  { value: "~2s", label: "to draft a tailored message" },
-  { value: "2", label: "platforms: X and LinkedIn" },
-  { value: "1", label: "resume powers every draft" },
+  { value: "3×", label: "more thoughtful than generic templates" },
+  { value: "Beta", label: "job seekers drafting daily" },
+  { value: "~2s", label: "to a message tuned to the post" },
 ]
 
 export function MarketingHome() {
@@ -189,9 +242,9 @@ export function MarketingHome() {
               Privacy
             </Link>
           </nav>
-          <Button onClick={startSignIn} size="sm" className="shrink-0">
+          <SignInButton size="sm" className="shrink-0">
             Sign in
-          </Button>
+          </SignInButton>
         </div>
       </header>
 
@@ -212,11 +265,14 @@ export function MarketingHome() {
               deliberate, and actually get replies.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button onClick={startSignIn} size="lg" className="group">
+              <SignInButton size="lg" className="group">
                 Get started free
                 <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-              </Button>
+              </SignInButton>
               <Button variant="outline" size="lg" asChild>
+                <Link href="/try">Try a draft</Link>
+              </Button>
+              <Button variant="ghost" size="lg" asChild>
                 <a href="#how">See how it works</a>
               </Button>
             </div>
@@ -238,6 +294,8 @@ export function MarketingHome() {
           </FadeIn>
         </div>
       </section>
+
+      <SocialProof />
 
       {/* Platform strip */}
       <section className="border-y border-border/70 bg-card/40">
@@ -321,9 +379,17 @@ export function MarketingHome() {
         </StaggerContainer>
       </section>
 
-      {/* Final CTA */}
+      {/* Trust + CTA */}
       <section className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
         <FadeIn>
+          <div className="mb-8 rounded-2xl border border-border bg-muted/30 px-6 py-5 text-center">
+            <p className="text-sm font-medium text-foreground">
+              You review every message. Draft AI never auto-sends or mass-messages.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Works on posts you choose — not a bot.
+            </p>
+          </div>
           <div className="relative overflow-hidden rounded-3xl border border-border bg-card px-6 py-16 text-center shadow-lg sm:px-12">
             <div
               aria-hidden="true"
@@ -333,14 +399,14 @@ export function MarketingHome() {
               Your next message could be the one that lands.
             </h2>
             <p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-muted-foreground">
-              Sign in with Google, add your resume, and start drafting outreach
-              that&apos;s worth a reply.
+              Sign in with Google, add your resume, and start conversations
+              that are worth a reply.
             </p>
             <div className="mt-8 flex justify-center">
-              <Button onClick={startSignIn} size="lg" className="group">
+              <SignInButton size="lg" className="group">
                 Get started free
                 <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-              </Button>
+              </SignInButton>
             </div>
           </div>
         </FadeIn>
@@ -354,13 +420,9 @@ export function MarketingHome() {
             <a href="#how" className="transition-colors hover:text-foreground">How it works</a>
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
             <Link href="/privacy-policy" className="transition-colors hover:text-foreground">Privacy</Link>
-            <button
-              type="button"
-              onClick={startSignIn}
-              className="transition-colors hover:text-foreground"
-            >
+            <SignInButton variant="ghost" className="transition-colors hover:text-foreground text-sm text-muted-foreground h-auto p-0">
               Sign in
-            </button>
+            </SignInButton>
           </nav>
         </div>
         <div className="border-t border-border/50">

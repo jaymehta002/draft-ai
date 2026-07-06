@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo } from "react"
 import { Plus } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -9,18 +10,26 @@ import {
   emptyWorkExperience,
   type WorkExperienceEntry,
 } from "@/lib/candidate-profile"
-import { cn } from "@/lib/utils"
+import { sortWorkExperiences } from "@/lib/work-experience-dates"
 
 type WorkExperienceEditorProps = {
   entries: WorkExperienceEntry[]
   onChange: (entries: WorkExperienceEntry[]) => void
   compact?: boolean
+  aiFilled?: boolean
 }
 
-export function WorkExperienceEditor({ entries, onChange, compact }: WorkExperienceEditorProps) {
+export function WorkExperienceEditor({
+  entries,
+  onChange,
+  compact,
+  aiFilled,
+}: WorkExperienceEditorProps) {
+  const sortedEntries = useMemo(() => sortWorkExperiences(entries), [entries])
+
   const update = (id: string, patch: Partial<WorkExperienceEntry>) => {
     onChange(
-      entries.map((e) => {
+      sortedEntries.map((e) => {
         if (e.id !== id) {
           if (patch.isCurrent) return { ...e, isCurrent: false }
           return e
@@ -31,12 +40,12 @@ export function WorkExperienceEditor({ entries, onChange, compact }: WorkExperie
   }
 
   const addEntry = () => {
-    onChange([...entries, emptyWorkExperience(false)])
+    onChange([...sortedEntries, emptyWorkExperience(false)])
   }
 
   const removeEntry = (id: string) => {
-    if (entries.length <= 1) return
-    onChange(entries.filter((e) => e.id !== id))
+    if (sortedEntries.length <= 1) return
+    onChange(sortedEntries.filter((e) => e.id !== id))
   }
 
   return (
@@ -50,12 +59,18 @@ export function WorkExperienceEditor({ entries, onChange, compact }: WorkExperie
         </div>
       )}
 
-      {entries.map((entry, index) => (
+      {sortedEntries.map((entry, index) => (
         <EntryCard
           key={entry.id}
           title={entry.isCurrent ? "Current role" : `Role ${index + 1}`}
-          subtitle={entry.isCurrent ? "You are currently working here" : undefined}
-          canRemove={entries.length > 1}
+          subtitle={
+            aiFilled && entry.title && entry.company
+              ? "Pre-filled from resume — review and edit"
+              : entry.isCurrent
+                ? "You are currently working here"
+                : undefined
+          }
+          canRemove={sortedEntries.length > 1}
           onRemove={() => removeEntry(entry.id)}
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

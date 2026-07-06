@@ -6,10 +6,12 @@ import { cn } from "@/lib/utils"
 
 export function ResumeUploadStep({
   onUpload,
+  onManualEntry,
   uploading,
   error,
 }: {
   onUpload: (file: File) => void
+  onManualEntry: () => void
   uploading: boolean
   error: string | null
 }) {
@@ -58,6 +60,18 @@ export function ResumeUploadStep({
       {error && (
         <p className="mt-4 text-sm text-destructive">{error}</p>
       )}
+
+      <div className="mt-6 flex flex-col items-center gap-3">
+        <span className="text-sm text-muted-foreground">or</span>
+        <button
+          type="button"
+          onClick={onManualEntry}
+          disabled={uploading}
+          className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
+        >
+          Enter details manually
+        </button>
+      </div>
 
       <div className="mt-8 flex items-start gap-3 text-sm text-muted-foreground">
         <FileText className="h-4 w-4 mt-0.5 shrink-0" />

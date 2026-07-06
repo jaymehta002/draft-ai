@@ -18,9 +18,13 @@ import {
   buildStepQueue,
   stepKey,
   getStepField,
+  getStepLabel,
   canContinueStep,
   type StepId,
 } from "@/lib/onboarding-steps"
+import { ToneStep } from "@/components/onboarding/tone-step"
+import { PreviewDraftStep } from "@/components/onboarding/preview-draft-step"
+import { WhatsNextStep } from "@/components/onboarding/whats-next-step"
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell"
 import { ResumeUploadStep } from "@/components/onboarding/resume-upload-step"
 import {
@@ -227,6 +231,11 @@ export default function OnboardingPage() {
     }
   }
 
+  const handleManualEntry = () => {
+    setError(null)
+    startStepFlow(profile, new Set(), false)
+  }
+
   const saveDraft = async () => {
     await saveCandidateProfile(buildFormData(), false)
   }
@@ -270,7 +279,7 @@ export default function OnboardingPage() {
     setError(null)
     try {
       await saveCandidateProfile(buildFormData(), true)
-      router.push("/dashboard")
+      router.push("/dashboard?section=extension")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding")
     } finally {
@@ -314,6 +323,11 @@ export default function OnboardingPage() {
   return (
     <OnboardingShell
       progress={progress}
+      stepLabel={
+        flowPhase === "steps" && stepQueue.length > 0
+          ? getStepLabel(currentStep, stepIndex, stepQueue.length)
+          : undefined
+      }
       footer={
         showFooter ? (
           <div className="space-y-3">
@@ -363,6 +377,7 @@ export default function OnboardingPage() {
           <ResumeUploadStep
             key="resume"
             onUpload={handleResumeUpload}
+            onManualEntry={handleManualEntry}
             uploading={false}
             error={error}
           />
@@ -401,6 +416,7 @@ export default function OnboardingPage() {
             key="work"
             entries={profile.workExperiences}
             onChange={(workExperiences) => updateProfilePatch({ workExperiences })}
+            aiFilled={aiFilledFields.has("workExperiences")}
           />
         ) : currentStep === "projects" ? (
           <ProjectsStep
@@ -414,6 +430,19 @@ export default function OnboardingPage() {
             entries={profile.certificates}
             onChange={(certificates) => updateProfilePatch({ certificates })}
           />
+        ) : currentStep === "tone" ? (
+          <ToneStep
+            key="tone"
+            value={profile.outreachTone}
+            onChange={(v) => updateField("outreachTone", v)}
+          />
+        ) : currentStep === "preview-draft" ? (
+          <PreviewDraftStep
+            key="preview-draft"
+            onSkip={() => setStepIndex((prev) => prev + 1)}
+          />
+        ) : currentStep === "whats-next" ? (
+          <WhatsNextStep key="whats-next" />
         ) : currentStep === "review" ? (
           <ReviewStep
             key="review"

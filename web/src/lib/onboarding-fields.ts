@@ -25,6 +25,12 @@ export const QUESTION_FIELD_ORDER: FieldConfig[] = [
     inputType: "text",
   },
   {
+    key: "currentTitle",
+    question: "What's your current job title?",
+    placeholder: "Senior Software Engineer",
+    inputType: "text",
+  },
+  {
     key: "yearsExperience",
     question: "How many years of professional experience do you have?",
     placeholder: "5",
@@ -129,6 +135,9 @@ export const FIELD_LABELS: Record<keyof CandidateProfileData, string> = {
   resumeContent: "Resume",
   desiredRoles: "Desired roles",
   salaryExpectation: "Salary expectation",
-  workPreference: "Work preference",
+  workPreference: "Work location",
   availability: "Availability",
+  outreachTone: "Outreach tone",
+  draftLength: "Draft length",
+  outreachLanguage: "Language",
 }
