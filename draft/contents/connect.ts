@@ -13,7 +13,7 @@ export const config: PlasmoCSConfig = {
     "https://draft-ai-ashen.vercel.app/extension/connect*",
     "https://*.vercel.app/extension/connect*"
   ],
-  run_at: "document_idle",
+  run_at: "document_start",
 }
 
 if (!isExtensionContextValid()) {

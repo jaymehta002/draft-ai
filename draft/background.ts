@@ -45,13 +45,12 @@ chrome.runtime.onStartup.addListener(() => {
 })
 
 function setupSidePanel() {
-  if (chrome.sidePanel?.setPanelBehavior) {
-    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false })
-  }
+  if (typeof chrome === "undefined" || !chrome.sidePanel?.setPanelBehavior) return
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false })
 }
 
 async function openSidePanelForTab(tabId?: number) {
-  if (!tabId || !chrome.sidePanel?.open) return
+  if (!tabId || typeof chrome === "undefined" || !chrome.sidePanel?.open) return
   try {
     await chrome.sidePanel.open({ tabId })
   } catch (error) {
@@ -133,6 +132,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "MARK_POST_SENT") {
     markPostSent(message.payload.postId, message.payload.status)
       .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ success: false, error: error.message }))
+    return true
+  }
+
+  if (message.type === "GENERATE_VARIANT") {
+    handleGenerateVariant(message.payload)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ success: false, error: error.message }))
+    return true
+  }
+
+  if (message.type === "MARK_REPLIED") {
+    handleMarkReplied(message.payload)
+      .then(sendResponse)
       .catch((error) => sendResponse({ success: false, error: error.message }))
     return true
   }
@@ -398,6 +411,70 @@ async function handleSendEmail(payload: unknown) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to send email"
     console.error("Error sending email:", error)
+    return { success: false, error: message }
+  }
+}
+
+async function handleGenerateVariant(payload: { postId: string; alternateTone: string }) {
+  try {
+    const apiKey = await getApiKey()
+
+    const response = await fetch(`${API_BASE_URL}/api/match-job/variant`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    const data = await response.json()
+
+    if (response.status === 401) {
+      await handleUnauthorized()
+      throw new Error("Session expired. Please sign in again from the extension popup.")
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to generate variant")
+    }
+
+    return { success: true, variant: data.variant, cached: data.cached }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to generate variant"
+    console.error("Error generating variant:", error)
+    return { success: false, error: message }
+  }
+}
+
+async function handleMarkReplied(payload: { outreachId: string }) {
+  try {
+    const apiKey = await getApiKey()
+
+    const response = await fetch(`${API_BASE_URL}/api/extension/mark-replied`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    const data = await response.json()
+
+    if (response.status === 401) {
+      await handleUnauthorized()
+      throw new Error("Session expired. Please sign in again from the extension popup.")
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to mark as replied")
+    }
+
+    return { success: true }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to mark as replied"
+    console.error("Error marking replied:", error)
     return { success: false, error: message }
   }
 }

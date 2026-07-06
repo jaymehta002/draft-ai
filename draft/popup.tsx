@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ExternalLink, LogOut, Loader2, Check, TrendingUp, Send, FileText } from "lucide-react"
+import { ExternalLink, LogOut, Loader2, Check, TrendingUp, Send, FileText, Circle } from "lucide-react"
 import "./style.css"
 import { DraftAIBrand } from "~components/draft-ai-brand"
 import { WEB_URL } from "~lib/config"
@@ -19,6 +19,99 @@ type Analytics = {
   sentThisWeek: number
   totalSent: number
   draftsToday: number
+  totalReplied?: number
+  repliedThisWeek?: number
+  replyRate?: number
+  replyRate7d?: number
+}
+
+type ExtensionStatus = {
+  hasProfile: boolean
+  gmailConnected: boolean
+  hasDrafted: boolean
+}
+
+function SetupChecklist({
+  auth,
+  analytics,
+  status,
+}: {
+  auth: AuthState | null
+  analytics: Analytics | null
+  status: ExtensionStatus | null
+}) {
+  const steps = [
+    {
+      label: auth ? "Profile ready" : "Sign in on web",
+      done: status?.hasProfile ?? false,
+      href: `${WEB_URL}/onboarding`,
+    },
+    {
+      label: "Extension connected",
+      done: Boolean(auth?.apiKey),
+      href: null,
+    },
+    {
+      label: "Gmail ready",
+      done: status?.gmailConnected ?? false,
+      href: `${WEB_URL}/dashboard?section=extension`,
+    },
+    {
+      label: "First outreach",
+      done:
+        (analytics?.draftsToday ?? 0) > 0 ||
+        (analytics?.totalSent ?? 0) > 0 ||
+        (status?.hasDrafted ?? false),
+      href: null,
+    },
+  ]
+
+  const completed = steps.filter((s) => s.done).length
+  const allDone = completed === steps.length
+
+  if (allDone) {
+    return (
+      <div className="rounded-xl border border-[#16a34a]/30 bg-[#16a34a]/5 px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-medium text-[#16a34a]">
+          <Check className="h-3.5 w-3.5" />
+          All set — click Draft on any post
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-secondary/50 px-4 py-3">
+      <p className="mb-3 text-xs font-medium text-muted-foreground">
+        Setup · {completed} of {steps.length} complete
+      </p>
+      <ol className="space-y-2">
+        {steps.map((step) => (
+          <li key={step.label} className="flex items-center gap-2 text-xs">
+            {step.done ? (
+              <Check className="h-3.5 w-3.5 shrink-0 text-[#16a34a]" />
+            ) : (
+              <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+            )}
+            {step.href && !step.done ? (
+              <a
+                href={step.href}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary hover:underline"
+              >
+                {step.label}
+              </a>
+            ) : (
+              <span className={step.done ? "text-muted-foreground" : "text-foreground"}>
+                {step.label}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
 }
 
 function IndexPopup() {
@@ -30,6 +123,7 @@ function IndexPopup() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus | null>(null)
 
   const renderedFromCache = useRef(false)
   const lastFetchTime = useRef<number>(0)
@@ -44,11 +138,31 @@ function IndexPopup() {
       if (response?.success && response.auth) {
         setAuth(response.auth)
         fetchAnalytics(response.auth)
+        fetchExtensionStatus(response.auth)
       } else {
         setAuth(null)
         setAnalytics(null)
+        setExtensionStatus(null)
       }
     })
+  }
+
+  const fetchExtensionStatus = async (authState: AuthState) => {
+    try {
+      const response = await fetch(`${WEB_URL}/api/extension/status`, {
+        headers: { Authorization: `Bearer ${authState.apiKey}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setExtensionStatus({
+          hasProfile: data.hasProfile,
+          gmailConnected: data.gmailConnected,
+          hasDrafted: data.hasDrafted,
+        })
+      }
+    } catch (error) {
+      console.error("Failed to fetch extension status:", error)
+    }
   }
 
   const fetchAnalytics = async (authState: AuthState, force = false) => {
@@ -104,6 +218,7 @@ function IndexPopup() {
         }
 
         fetchAnalytics(authState)
+        fetchExtensionStatus(authState)
       }
 
       revalidate({ silent: renderedFromCache.current })
@@ -216,17 +331,15 @@ function IndexPopup() {
                 />
                 <StatCard
                   icon={<Check className="h-4 w-4" />}
-                  label="Total sent"
-                  value={analytics.totalSent}
+                  label="Reply rate"
+                  value={`${analytics.replyRate ?? 0}%`}
+                  sub={`${analytics.totalReplied ?? 0} replied`}
+                  accent
                 />
               </div>
             ) : null}
 
-            <div className="rounded-xl border border-border bg-secondary/50 px-4 py-3">
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Click <span className="font-semibold text-primary">Draft</span> on any X or LinkedIn post to start.
-              </p>
-            </div>
+            <SetupChecklist auth={auth} analytics={analytics} status={extensionStatus} />
 
             <button
               onClick={handleDisconnect}
@@ -238,6 +351,7 @@ function IndexPopup() {
           </div>
         ) : (
           <div className="space-y-4">
+            <SetupChecklist auth={null} analytics={null} status={null} />
             <p className="text-sm leading-relaxed text-muted-foreground">
               Connect your account to draft personalized outreach on X and LinkedIn.
             </p>
@@ -259,7 +373,7 @@ function IndexPopup() {
         )}
 
         <a
-          href={WEB_URL}
+          href={`${WEB_URL}/dashboard?section=extension`}
           target="_blank"
           rel="noreferrer"
           className="flex items-center justify-center gap-1.5 pt-1 text-xs text-muted-foreground transition-colors duration-200 hover:text-primary"
@@ -276,11 +390,13 @@ function StatCard({
   icon,
   label,
   value,
+  sub,
   accent = false,
 }: {
   icon: React.ReactNode
   label: string
-  value: number
+  value: number | string
+  sub?: string
   accent?: boolean
 }) {
   return (
@@ -296,6 +412,7 @@ function StatCard({
       </div>
       <p className="mb-0.5 text-2xl font-semibold text-foreground">{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
+      {sub && <p className="mt-0.5 text-[10px] text-muted-foreground/80">{sub}</p>}
     </div>
   )
 }

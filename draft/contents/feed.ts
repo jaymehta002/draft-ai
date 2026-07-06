@@ -21,10 +21,11 @@ import {
   isPostSent,
   type SentPostsMap,
 } from "~lib/sent-posts"
+import { getFeedPlatformFromHostname } from "~lib/platform"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "~lib/email"
 
 export const config: PlasmoCSConfig = {
-  matches: ["*://*.x.com/*", "*://*.linkedin.com/*"],
+  matches: ["*://*.x.com/*", "*://*.twitter.com/*", "*://*.linkedin.com/*"],
   run_at: "document_idle",
   all_frames: false,
 }
@@ -49,7 +50,7 @@ const DRAFT_BTN_INLINE_STYLE = [
 
 const POPOVER_STYLES = `
   .rp-draft-btn {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -66,8 +67,8 @@ const POPOVER_STYLES = `
   }
   .rp-draft-btn:hover:not(:disabled) { background: #262626; }
   .rp-draft-btn:disabled { opacity: 0.6; cursor: wait; }
-  .rp-draft-btn--ready { background: #2563eb; }
-  .rp-draft-btn--ready:hover:not(:disabled) { background: #1d4ed8; }
+  .rp-draft-btn--ready { background: #1447e6; }
+  .rp-draft-btn--ready:hover:not(:disabled) { background: #1038b8; }
   .rp-draft-btn--sent { background: #16a34a; }
   .rp-draft-btn--sent:hover:not(:disabled) { background: #15803d; }
   .rp-draft-btn-wrap {
@@ -460,9 +461,9 @@ const injectCSS = () => {
 }
 
 const getPlatform = () => {
-  const hostname = window.location.hostname
-  if (hostname.includes("x.com")) return PLATFORMS.X
-  if (hostname.includes("linkedin.com")) return PLATFORMS.LINKEDIN
+  const id = getFeedPlatformFromHostname(window.location.hostname)
+  if (id === "X") return PLATFORMS.X
+  if (id === "LINKEDIN") return PLATFORMS.LINKEDIN
   return null
 }
 

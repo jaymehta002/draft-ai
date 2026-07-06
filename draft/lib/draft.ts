@@ -7,6 +7,14 @@ export type DraftMatchInsight = {
   relevant?: boolean
 }
 
+export type DraftVariantPreview = {
+  id: string
+  toneUsed: string
+  message: string
+  subject?: string | null
+  matchInsight?: DraftMatchInsight
+}
+
 export type DraftPreview = {
   status: "idle" | "loading" | "ready" | "sent" | "error"
   actionMode: "EMAIL" | "DM"
@@ -23,6 +31,9 @@ export type DraftPreview = {
   postUrl?: string
   platform?: string
   draftId?: string
+  variantId?: string
+  activeTone?: string
+  variants?: DraftVariantPreview[]
   cached?: boolean
   emailPayload?: {
     to: string
@@ -32,6 +43,7 @@ export type DraftPreview = {
     postUrl?: string
     platform: string
     draftId?: string
+    variantId?: string
     recipientName?: string
     recipientHandle?: string
     recipientProfileUrl?: string

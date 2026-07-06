@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Mail, Copy, Loader2, Check, AlertCircle } from "lucide-react"
+import { Mail, Copy, Loader2, Check, AlertCircle, Sparkles } from "lucide-react"
 import "./style.css"
 import { DraftAIBrand } from "~components/draft-ai-brand"
-import { DRAFT_STORAGE_KEY, type DraftPreview } from "~lib/draft"
+import { DRAFT_STORAGE_KEY, type DraftPreview, type DraftVariantPreview } from "~lib/draft"
 import { persistDraftEdits } from "~lib/draft-sync"
 import { cn } from "~lib/utils"
 
@@ -41,6 +41,13 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
+const TONE_OPTIONS = [
+  { value: "professional", label: "Professional" },
+  { value: "warm", label: "Warm" },
+  { value: "direct", label: "Direct" },
+  { value: "formal", label: "Formal" },
+] as const
+
 function SidePanel() {
   const [draft, setDraft] = useState<DraftPreview | null>(null)
   const [message, setMessage] = useState("")
@@ -50,6 +57,12 @@ function SidePanel() {
   const [copied, setCopied] = useState(false)
   const [isCopying, setIsCopying] = useState(false)
   const [statusNote, setStatusNote] = useState<StatusNote | null>(null)
+  const [showWhyDraft, setShowWhyDraft] = useState(true)
+  const [showConfidenceNudge, setShowConfidenceNudge] = useState(true)
+  const [activeVariantId, setActiveVariantId] = useState<string | null>(null)
+  const [generatingTone, setGeneratingTone] = useState<string | null>(null)
+  const [originalMessage, setOriginalMessage] = useState("")
+  const [originalSubject, setOriginalSubject] = useState("")
 
   const dirtyRef = useRef(false)
   const postIdRef = useRef<string | undefined>(undefined)
@@ -73,6 +86,9 @@ function SidePanel() {
     if (isNewPost || isLoading || force) {
       postIdRef.current = current.postId
       dirtyRef.current = false
+      setActiveVariantId(current.variantId ?? null)
+      setOriginalMessage(current.message ?? "")
+      setOriginalSubject(current.subject ?? "")
       setMessage(current.message ?? "")
       setSubject(current.subject ?? "")
       setRecipientEmail(current.recipientEmail ?? current.emailPayload?.to ?? "")
@@ -180,6 +196,7 @@ function SidePanel() {
       postUrl: draft.postUrl || draft.emailPayload.postUrl,
       platform: draft.platform || draft.emailPayload.platform,
       draftId: draft.draftId || draft.emailPayload.draftId,
+      variantId: activeVariantId ?? draft.variantId,
       recipientName: draft.recipientName || draft.emailPayload.recipientName,
       recipientHandle: draft.recipientHandle || draft.emailPayload.recipientHandle,
       recipientProfileUrl: draft.recipientProfileUrl || draft.emailPayload.recipientProfileUrl,
@@ -226,6 +243,80 @@ function SidePanel() {
     })
   }
 
+  const usedTones = new Set([
+    draft?.activeTone || "professional",
+    ...(draft?.variants?.map((v) => v.toneUsed) ?? []),
+  ])
+
+  const availableTones = TONE_OPTIONS.filter((t) => !usedTones.has(t.value))
+
+  const selectVariant = (variant: DraftVariantPreview | null) => {
+    if (!draft) return
+    if (!variant) {
+      setActiveVariantId(null)
+      setMessage(originalMessage)
+      setSubject(originalSubject)
+      dirtyRef.current = false
+      chrome.storage.local.set({
+        [DRAFT_STORAGE_KEY]: {
+          ...draft,
+          variantId: undefined,
+          activeTone: "professional",
+          message: originalMessage,
+          subject: originalSubject,
+          updatedAt: Date.now(),
+        },
+      })
+      return
+    }
+
+    setActiveVariantId(variant.id)
+    setMessage(variant.message)
+    setSubject(variant.subject ?? "")
+    dirtyRef.current = false
+    chrome.storage.local.set({
+      [DRAFT_STORAGE_KEY]: {
+        ...draft,
+        variantId: variant.id,
+        activeTone: variant.toneUsed,
+        message: variant.message,
+        subject: variant.subject ?? "",
+        matchInsight: variant.matchInsight ?? draft.matchInsight,
+        updatedAt: Date.now(),
+      },
+    })
+  }
+
+  const handleTryAnotherTone = (tone: string) => {
+    if (!draft?.postId || generatingTone) return
+    setGeneratingTone(tone)
+
+    chrome.runtime.sendMessage(
+      { type: "GENERATE_VARIANT", payload: { postId: draft.postId, alternateTone: tone } },
+      (response) => {
+        setGeneratingTone(null)
+        if (chrome.runtime.lastError || !response?.success) {
+          setStatusNote({
+            tone: "error",
+            text: response?.error || chrome.runtime.lastError?.message || "Failed to generate variant",
+          })
+          return
+        }
+
+        const variant = response.variant as DraftVariantPreview
+        const variants = [...(draft.variants ?? []), variant]
+        const updated: DraftPreview = {
+          ...draft,
+          variants,
+          updatedAt: Date.now(),
+        }
+        chrome.storage.local.set({ [DRAFT_STORAGE_KEY]: updated })
+        setDraft(updated)
+        selectVariant(variant)
+      }
+    )
+  }
+
   const handleCopy = async () => {
     if (isCopying || !message.trim()) return
 
@@ -252,6 +343,7 @@ function SidePanel() {
             postUrl: draft.postUrl,
             platform: draft.platform,
             draftId: draft.draftId,
+            variantId: activeVariantId ?? draft.variantId,
             recipientName: draft.recipientName,
             recipientHandle: draft.recipientHandle,
             recipientProfileUrl: draft.recipientProfileUrl,
@@ -300,6 +392,99 @@ function SidePanel() {
                     Drafting for <span className="font-semibold text-primary">{draft.recipientName}</span>
                   </p>
                 </div>
+              )}
+
+              {draft.matchInsight && (
+                <div className="rounded-xl border border-border bg-card">
+                  <button
+                    type="button"
+                    onClick={() => setShowWhyDraft((v) => !v)}
+                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-foreground"
+                  >
+                    Why this draft
+                    <span className="text-xs text-muted-foreground">
+                      {draft.matchInsight.score}% match
+                    </span>
+                  </button>
+                  {showWhyDraft && (
+                    <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground space-y-2">
+                      {draft.matchInsight.reason && <p>{draft.matchInsight.reason}</p>}
+                      {draft.matchInsight.highlights?.map((h) => (
+                        <p key={h} className="text-primary">· {h}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(draft.variants?.length ?? 0) > 0 || availableTones.length > 0 ? (
+                <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                    Tone variants
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => selectVariant(null)}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors",
+                        !activeVariantId
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-accent"
+                      )}
+                    >
+                      Original
+                    </button>
+                    {draft.variants?.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => selectVariant(v)}
+                        className={cn(
+                          "rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize transition-colors",
+                          activeVariantId === v.id
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground hover:bg-accent"
+                        )}
+                      >
+                        {v.toneUsed}
+                      </button>
+                    ))}
+                  </div>
+                  {availableTones.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {availableTones.map((t) => (
+                        <button
+                          key={t.value}
+                          type="button"
+                          disabled={Boolean(generatingTone)}
+                          onClick={() => handleTryAnotherTone(t.value)}
+                          className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[10px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                        >
+                          {generatingTone === t.value ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3 w-3" />
+                          )}
+                          Try {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {showConfidenceNudge && message.trim() && !isSent && (
+                <p className="text-xs text-muted-foreground rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center justify-between gap-2">
+                  Read aloud — does this sound like you?
+                  <button
+                    type="button"
+                    onClick={() => setShowConfidenceNudge(false)}
+                    className="text-primary hover:underline shrink-0"
+                  >
+                    Dismiss
+                  </button>
+                </p>
               )}
 
               {isEmail && (

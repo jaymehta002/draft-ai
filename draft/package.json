@@ -9,6 +9,7 @@
     "dev:hmr": "plasmo dev",
     "dev:stable": "plasmo build --watch",
     "build": "plasmo build",
+    "build:firefox": "plasmo build --target=firefox-mv3",
     "package": "plasmo package"
   },
   "dependencies": {
@@ -33,10 +34,11 @@
   "manifest": {
     "host_permissions": [
       "*://*.x.com/*",
+      "*://*.twitter.com/*",
       "*://*.linkedin.com/*",
-      "http://localhost:3000/*",
-      "http://127.0.0.1:3000/*",
-      "https://*/*"
+      "https://*.vercel.app/*",
+      "http://localhost/*",
+      "http://127.0.0.1/*"
     ],
     "permissions": [
       "storage",
@@ -47,6 +49,12 @@
     ],
     "side_panel": {
       "default_path": "sidepanel.html"
+    },
+    "browser_specific_settings": {
+      "gecko": {
+        "id": "draft-ai@recruitable.ai",
+        "strict_min_version": "109.0"
+      }
     }
   }
 }
