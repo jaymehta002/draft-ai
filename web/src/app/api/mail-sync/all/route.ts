@@ -1,12 +1,13 @@
 /**
  * GET /api/mail-sync/all
  *
- * Vercel Cron target — runs every 5 minutes.
- * Iterates all users who have a connected Gmail account and triggers
- * a mailbox sync for each, using the per-user /api/mail-sync route logic
- * directly (no HTTP round-trip — calls processInboundForUser directly).
+ * Scheduled sync target — invoked every 5 minutes by cron-job.org.
+ * Vercel Hobby cannot run sub-daily crons, so we use an external scheduler.
  *
- * Protected by CRON_SECRET header set in vercel.json.
+ * Iterates all users who have a connected Gmail account and triggers
+ * a mailbox sync for each (calls processInboundForUser directly).
+ *
+ * Protected by Authorization: Bearer <CRON_SECRET>.
  */
 
 import { NextResponse } from "next/server"
@@ -17,7 +18,6 @@ export const runtime = "nodejs"
 export const maxDuration = 60
 
 export async function GET(req: Request) {
-  // Vercel sets the Authorization header from the cron secret automatically.
   const cronSecret = process.env.CRON_SECRET
   const authHeader = req.headers.get("authorization")
 
