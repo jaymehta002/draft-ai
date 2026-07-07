@@ -422,6 +422,7 @@ export function MarketingHome() {
             <a href="#how" className="transition-colors hover:text-foreground">How it works</a>
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
             <Link href="/pricing" className="transition-colors hover:text-foreground">Pricing</Link>
+            <Link href="/recruiters" className="transition-colors hover:text-foreground">For recruiters</Link>
             <Link href="/privacy-policy" className="transition-colors hover:text-foreground">Privacy</Link>
             <SignInButton variant="ghost" className="transition-colors hover:text-foreground text-sm text-muted-foreground h-auto p-0">
               Sign in

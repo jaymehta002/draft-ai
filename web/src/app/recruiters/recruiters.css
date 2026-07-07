@@ -1,0 +1,223 @@
+/* Recruiters landing — scoped dark canvas tokens & motion */
+
+.recruiters {
+  --recruit-bg: #0a0e17;
+  --recruit-surface: #121a2b;
+  --recruit-surface-elevated: #1a2438;
+  --recruit-border: rgba(255, 255, 255, 0.08);
+  --recruit-border-hover: rgba(255, 255, 255, 0.14);
+  --recruit-glow: rgba(20, 71, 230, 0.45);
+  --recruit-text: #e8edf5;
+  --recruit-muted: #8b95a8;
+
+  background-color: var(--recruit-bg);
+  color: var(--recruit-text);
+  scroll-behavior: smooth;
+}
+
+.recruiters .recruit-glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--recruit-border);
+}
+
+.recruiters .recruit-surface {
+  background-color: var(--recruit-surface);
+  border: 1px solid var(--recruit-border);
+}
+
+.recruiters .recruit-surface-elevated {
+  background-color: var(--recruit-surface-elevated);
+  border: 1px solid var(--recruit-border);
+}
+
+.recruiters .recruit-cta-primary {
+  background: linear-gradient(135deg, #1447e6 0%, #2563ef 50%, #3b82f6 100%);
+  color: #fff;
+  box-shadow:
+    0 0 0 1px rgba(20, 71, 230, 0.3),
+    0 4px 24px var(--recruit-glow);
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.recruiters .recruit-cta-primary:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px rgba(20, 71, 230, 0.5),
+    0 8px 32px var(--recruit-glow);
+}
+
+.recruiters .recruit-cta-primary:active {
+  transform: translateY(0);
+}
+
+.recruiters .recruit-cta-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--recruit-border);
+  color: var(--recruit-text);
+  transition:
+    background 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.recruiters .recruit-cta-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--recruit-border-hover);
+}
+
+/* Hero orbs */
+.recruit-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.recruit-orb-1 {
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, rgba(20, 71, 230, 0.35) 0%, transparent 70%);
+  top: -120px;
+  right: -80px;
+}
+
+.recruit-orb-2 {
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, transparent 70%);
+  bottom: 0;
+  left: -60px;
+}
+
+/* Bento cell motion */
+@keyframes recruit-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.recruiters .bento-cell {
+  animation: recruit-fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-timeline: view();
+  animation-range: entry 0% entry 100%;
+}
+
+.recruiters .bento-cell:nth-child(1) { animation-delay: 0s; }
+.recruiters .bento-cell:nth-child(2) { animation-delay: 0.08s; }
+.recruiters .bento-cell:nth-child(3) { animation-delay: 0.16s; }
+.recruiters .bento-cell:nth-child(4) { animation-delay: 0.24s; }
+.recruiters .bento-cell:nth-child(5) { animation-delay: 0.32s; }
+.recruiters .bento-cell:nth-child(6) { animation-delay: 0.4s; }
+
+.recruiters .bento-cell-inner {
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.recruiters .bento-cell:hover .bento-cell-inner {
+  transform: translateY(-2px);
+  border-color: var(--recruit-border-hover);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* Growth pricing card pulsing border */
+@keyframes recruit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.recruiters .pricing-card-growth {
+  position: relative;
+  isolation: isolate;
+}
+
+.recruiters .pricing-card-growth::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    rgba(20, 71, 230, 0.6) 25%,
+    transparent 50%,
+    rgba(59, 130, 246, 0.4) 75%,
+    transparent 100%
+  );
+  z-index: -1;
+  animation: recruit-spin 4s linear infinite;
+}
+
+.recruiters .pricing-card-growth::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: var(--recruit-surface-elevated);
+  z-index: -1;
+}
+
+.recruiters .pricing-card {
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.recruiters .pricing-card:hover {
+  transform: scale(1.02);
+}
+
+/* Paradigm panels — no-JS stack */
+.recruiters .paradigm-panels {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .recruiters .paradigm-panels {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* FAQ details */
+.recruiters details summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.recruiters details summary::-webkit-details-marker {
+  display: none;
+}
+
+.recruiters details[open] summary .faq-chevron {
+  transform: rotate(180deg);
+}
+
+.recruiters .faq-chevron {
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recruiters *,
+  .recruiters *::before,
+  .recruiters *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .recruiters .bento-cell {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
