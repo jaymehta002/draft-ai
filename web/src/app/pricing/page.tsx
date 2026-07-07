@@ -3,39 +3,34 @@ import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DraftAIBrand } from "@/components/draft-ai-brand"
+import { PricingCta } from "@/components/pricing/pricing-cta"
 
 const PLANS = [
   {
     name: "Free",
     price: "$0",
     period: "forever",
-    description: "Taste the magic during beta.",
-    features: ["10 drafts / month", "3 emails / month", "Chrome extension", "Reply tracking"],
-    cta: "Try a draft",
-    href: "/try",
+    description: "Get a feel for the magic.",
+    features: ["15 drafts / month", "10 emails / month", "Chrome extension", "Reply tracking"],
     highlighted: false,
   },
   {
     name: "Pro",
-    price: "$25",
+    price: "$20",
     period: "/ month",
     description: "For active job seekers.",
-    features: ["Unlimited drafts", "100 emails / month", "Tone insights", "Winning templates"],
-    cta: "Join beta — free now",
-    href: "/onboarding",
+    features: ["Unlimited-feel drafts", "200 emails / month", "Tone insights", "Follow-ups & templates"],
     highlighted: true,
-    badge: "Coming soon",
+    tier: "PRO" as const,
   },
   {
     name: "Power",
-    price: "$49",
+    price: "$50",
     period: "/ month",
     description: "Career changers and power users.",
-    features: ["Higher email limits", "Priority AI", "Advanced analytics", "Early features"],
-    cta: "Join beta — free now",
-    href: "/onboarding",
+    features: ["Highest limits", "1,000 emails / month", "Advanced analytics", "Priority support"],
     highlighted: false,
-    badge: "Coming soon",
+    tier: "POWER" as const,
   },
 ]
 
@@ -55,7 +50,7 @@ export default function PricingPage() {
         <div className="text-center mb-12">
           <h1 className="font-serif text-4xl tracking-tight text-foreground">Simple, honest pricing</h1>
           <p className="mt-3 text-muted-foreground max-w-lg mx-auto">
-            Draft AI is free during beta. Paid plans launch when billing goes live — no surprises.
+            Start free. Upgrade when your job search heats up. Cancel anytime — no surprises.
           </p>
         </div>
 
@@ -72,9 +67,9 @@ export default function PricingPage() {
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle className="text-lg">{plan.name}</CardTitle>
-                  {plan.badge && (
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                      {plan.badge}
+                  {plan.highlighted && (
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-primary">
+                      Most popular
                     </span>
                   )}
                 </div>
@@ -93,9 +88,17 @@ export default function PricingPage() {
                     </li>
                   ))}
                 </ul>
-                <Button className="w-full" variant={plan.highlighted ? "default" : "outline"} asChild>
-                  <Link href={plan.href}>{plan.cta}</Link>
-                </Button>
+                {plan.tier ? (
+                  <PricingCta
+                    tier={plan.tier}
+                    label={`Upgrade to ${plan.name}`}
+                    variant={plan.highlighted ? "default" : "outline"}
+                  />
+                ) : (
+                  <Button className="w-full" variant="outline" asChild>
+                    <Link href="/try">Try a draft</Link>
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ))}

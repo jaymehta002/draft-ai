@@ -4,10 +4,10 @@ overview: "A ruthless five-pillar audit of Draft AI (recruit-ai): behavioral psy
 todos:
   - id: p1-trust-bugs
     content: "Phase 1 Week 1: Fix per-post drafts, honest integration status, connect security, Sentry, extension deep links"
-    status: pending
+    status: completed
   - id: p1-onboarding
     content: "Phase 1 Week 2: Compress onboarding (try-first flow), progressive Gmail permissions, server auth guard"
-    status: pending
+    status: completed
   - id: p1-hardening
     content: "Phase 1 Week 3: Rate limiting, hashed API keys, account deletion/export, CI pipeline, .env.example"
     status: pending
@@ -16,13 +16,13 @@ todos:
     status: pending
   - id: p2-habits
     content: "Phase 2 Weeks 5-6: Streak system, weekly goals, reply celebrations, pipeline kanban, milestone badges"
-    status: pending
+    status: completed
   - id: p2-intelligence
     content: "Phase 2 Weeks 7-8: Reply intelligence UI, winning templates gallery, follow-up drafts, conversation CRM"
-    status: pending
+    status: completed
   - id: p3-stripe
     content: "Phase 3 Weeks 9-10: Stripe billing, usage ledger, server-side entitlements, upgrade flows"
-    status: pending
+    status: completed
   - id: p3-growth-scale
     content: "Phase 3 Weeks 11+: Referral loop, SEO, bootcamp pilot, job queue, admin dashboard, Firefox extension"
     status: pending
@@ -35,7 +35,22 @@ isProject: false
 
 **Actual stack (not React Native):** Next.js 16, React 19, Plasmo MV3 extension, PostgreSQL/Prisma, OpenAI gpt-4o-mini, Google OAuth + Gmail API, UploadThing.
 
-**Current maturity:** Strong end-to-end MVP. Core loop works. No billing, incomplete production hardening, high onboarding friction, no habit loops.
+**Current maturity:** Strong end-to-end product. Core loop works. Billing (Dodo Payments), habit loops, reply intelligence, and onboarding compression are shipped. Remaining gaps: CI e2e, Chrome Store marketing assets, job queue, bootcamp pilot, Firefox extension.
+
+---
+
+## Implementation audit (Jul 2026)
+
+| Phase | Status | Evidence |
+|-------|--------|----------|
+| **P1 Week 1** — Trust & P0 bugs | **Done** | `draftsByPostId` in `draft/lib/draft.ts`; deep links → `/dashboard/extension`; honest status in `extension-page-client.tsx`; `ConnectToken` + `connect-token.ts`; Sentry web + extension; 401 clears extension auth on key rotate |
+| **P1 Week 2** — Onboarding | **Done** | `/try` demo; `buildQuickStepQueue` (default quick mode); `GoogleSignInExplainer` + `gmail-consent.ts` (profile-only sign-in, Gmail on send/read); server auth guard in `onboarding/layout.tsx` |
+| **P1 Week 3** — Hardening | **Partial** | Rate limits (`rate-limit.ts`, `bearer-auth.ts`); hashed keys (`api-key.ts`); `web/.env.example`; `DELETE /api/account` + `GET /api/account/export`; CI lint+build in `.github/workflows/ci.yml` — **missing e2e in CI** |
+| **P1 Week 4** — Brand & store | **Partial** | Unified `draft-ai-brand.tsx` (web + extension); Inter + Merriweather fonts; `/pricing` page — **Chrome Store screenshots/demo video not in repo** (submit workflow exists) |
+| **P2 Weeks 5–6** — Habits | **Done** | `UserEngagement` streaks/goals; `ReplyCelebration` + confetti; `PipelineKanban`; `MilestoneBadges`; extension popup weekly goal ring |
+| **P2 Weeks 7–8** — Intelligence | **Done** | `TonePerformanceChart`, `TemplatesGallery`, `/api/follow-up-draft`, `ConversationMeta` + pipeline CRM, `sendDraftFromWeb`, offline queue in extension |
+| **P3 Weeks 9–10** — Billing | **Done** | Dodo Payments (not Stripe): checkout/portal/webhooks, `UsageLedger`, `entitlements.ts`, upgrade modals, 14-day trial on first send — `BILLING_ENFORCEMENT_ENABLED` flag for staged rollout |
+| **P3 Weeks 11+** — Growth & scale | **Partial** | Referral loop (`referral.ts`); SEO pages (`seo-content.ts`, persona/story routes); `/admin` metrics — **no job queue, bootcamp pilot, or shipped Firefox build** |
 
 **$1M ARR math (target):**
 - Blended ARPU ~$28/mo → **~3,000 paying subscribers**
@@ -209,9 +224,9 @@ flowchart LR
 | No `.env.example` | Root + `web/` | Deployment runbook |
 | E2E only, no unit tests | [`web/e2e/*.spec.ts`](web/e2e/) (7 specs) | Unit test `reply-metrics`, `draft-prompt`, auth |
 
-### IAP & Entitlement (Stripe — Not Yet Built)
+### IAP & Entitlement (Dodo Payments — Shipped)
 
-**Current state:** Zero billing. No Stripe, no usage limits, no entitlements.
+**Current state:** Dodo Payments billing is live in code (Stripe replaced for India MoR). `Subscription`, `UsageLedger`, `BillingEvent`, and `Referral` tables exist. Server-side enforcement on `match-job`, `send-email`, `follow-up-draft`, and `insights` routes. Gated by `BILLING_ENFORCEMENT_ENABLED`.
 
 **Bulletproof entitlement architecture to build:**
 
@@ -452,4 +467,4 @@ Draft AI has a **working wedge** (in-feed, resume-aware drafting) that Huntr/Tea
 4. **Freemium with clear limits** (Stripe) → convert engaged users
 5. **Chrome Store + SEO + bootcamps** (GTM) → distribution without burning cash
 
-The codebase is ~70% of the way to a fundable MVP. The missing 30% — billing, habits, onboarding compression, and production security — is what separates a demo from a business.
+The codebase is ~85% of the way to a fundable product. Billing, habits, onboarding compression, and most production security are shipped. The remaining ~15% — CI e2e, async job queue, bootcamp GTM, and Firefox — is scale and distribution polish.

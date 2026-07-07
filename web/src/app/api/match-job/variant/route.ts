@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { normalizeDraftResult, type DraftResult } from "@/lib/outreach"
 import { openai, OPENAI_MODEL } from "@/lib/openai"
 import { incrementDraftStats } from "@/lib/user-stats"
+import { checkEntitlement, incrementUsage, limitReachedResponse } from "@/lib/entitlements"
 import { buildDraftSystemPrompt } from "@/lib/draft-prompt"
 
 const VALID_TONES = ["professional", "warm", "direct", "formal"] as const
@@ -79,6 +80,10 @@ export async function POST(req: Request) {
       })
     }
 
+    // New variant → counts as a draft. Enforce before the OpenAI call.
+    const draftCheck = await checkEntitlement(apiKey.userId, "draft")
+    if (!draftCheck.allowed) return limitReachedResponse(draftCheck)
+
     const systemPrompt = buildDraftSystemPrompt(
       profile,
       {
@@ -144,6 +149,7 @@ export async function POST(req: Request) {
     })
 
     await incrementDraftStats(apiKey.userId)
+    await incrementUsage(apiKey.userId, "draft")
 
     return NextResponse.json({
       success: true,

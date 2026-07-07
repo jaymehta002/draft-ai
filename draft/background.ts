@@ -306,10 +306,13 @@ async function handleDraftPitchFlow(payload: {
   const result = await handleDraftPitch(payload)
 
   if (!result.success || !result.data) {
+    const limited = result as { limitReached?: boolean; upgradeUrl?: string }
     await setDraftPreview({
       ...loadingDraft,
       status: "error",
       error: result.error || "Failed to draft pitch",
+      limitReached: limited.limitReached,
+      upgradeUrl: limited.upgradeUrl,
     })
     return result
   }
@@ -412,6 +415,26 @@ async function handleUnauthorized() {
   await clearAuthState()
 }
 
+const DEFAULT_UPGRADE_PATH = "/dashboard/profile?tab=billing"
+
+/** Builds a structured limit-reached result from a 402 response body. */
+function limitReachedResult(data: { feature?: string; upgradeUrl?: string }) {
+  const feature = data.feature
+  const message =
+    feature === "email"
+      ? "You've hit your monthly email limit. Upgrade to keep sending."
+      : feature === "follow_up"
+        ? "Follow-up drafts are a Pro feature. Upgrade to unlock them."
+        : "You've used all your drafts this month. Upgrade for more."
+  return {
+    success: false as const,
+    limitReached: true as const,
+    feature,
+    upgradeUrl: `${WEB_URL}${data.upgradeUrl || DEFAULT_UPGRADE_PATH}`,
+    error: message,
+  }
+}
+
 async function handleDraftPitch(payload: unknown) {
   try {
     const apiKey = await getApiKey()
@@ -430,6 +453,10 @@ async function handleDraftPitch(payload: unknown) {
     if (response.status === 401) {
       await handleUnauthorized()
       throw new Error("Session expired. Please sign in again from the extension popup.")
+    }
+
+    if (response.status === 402) {
+      return limitReachedResult(data)
     }
 
     if (!response.ok) {
@@ -514,6 +541,10 @@ async function handleSendEmail(payload: unknown) {
       throw new Error("Session expired. Please sign in again from the extension popup.")
     }
 
+    if (response.status === 402) {
+      return limitReachedResult(data)
+    }
+
     if (!response.ok) {
       if (isRetryableFetchError(null, response)) {
         await enqueueOfflineAction({ type: "send-email", payload })
@@ -557,6 +588,10 @@ async function handleGenerateVariant(payload: { postId: string; alternateTone: s
     if (response.status === 401) {
       await handleUnauthorized()
       throw new Error("Session expired. Please sign in again from the extension popup.")
+    }
+
+    if (response.status === 402) {
+      return limitReachedResult(data)
     }
 
     if (!response.ok) {

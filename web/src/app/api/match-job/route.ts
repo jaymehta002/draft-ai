@@ -10,6 +10,7 @@ import {
 import { openai, OPENAI_MODEL } from "@/lib/openai"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { incrementDraftStats } from "@/lib/user-stats"
+import { checkEntitlement, incrementUsage, limitReachedResponse } from "@/lib/entitlements"
 import { recordActivity } from "@/lib/engagement"
 import { buildDraftSystemPrompt } from "@/lib/draft-prompt"
 import { classifyIndustry } from "@/lib/industry-classifier"
@@ -113,6 +114,10 @@ export async function POST(req: Request) {
       return NextResponse.json(draftResultToResponse(existingDraft, true))
     }
 
+    // Cache miss → this will hit OpenAI. Enforce the draft cap *before* spending.
+    const draftCheck = await checkEntitlement(apiKey.userId, "draft")
+    if (!draftCheck.allowed) return limitReachedResponse(draftCheck)
+
     const industryTag = classifyIndustry({
       postText: text,
       desiredRoles: profile.desiredRoles,
@@ -207,6 +212,7 @@ export async function POST(req: Request) {
     // Increment draft stats only on create (not update)
     if (savedDraft.createdAt.getTime() === savedDraft.updatedAt.getTime()) {
       await incrementDraftStats(apiKey.userId)
+      await incrementUsage(apiKey.userId, "draft")
       await recordActivity(apiKey.userId, "draft")
     }
 

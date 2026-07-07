@@ -4,6 +4,7 @@ import "./style.css"
 import { DraftAIBrand } from "~components/draft-ai-brand"
 import { WEB_URL } from "~lib/config"
 import type { AuthState } from "~lib/config"
+import { cn } from "~lib/utils"
 
 // ---------------------------------------------------------------------------
 // Load state
@@ -33,6 +34,33 @@ type ExtensionStatus = {
   hasProfile: boolean
   gmailConnected: boolean
   hasDrafted: boolean
+}
+
+type BillingSummary = {
+  tier: string
+  isTrialing: boolean
+  draftsRemaining: number
+  emailsRemaining: number
+}
+
+const TIER_LABEL: Record<string, string> = { FREE: "Free", PRO: "Pro", POWER: "Power" }
+
+function PlanBadge({ billing }: { billing: BillingSummary }) {
+  const isPaid = billing.tier !== "FREE"
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        billing.isTrialing
+          ? "bg-primary/15 text-primary"
+          : isPaid
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted text-muted-foreground"
+      )}
+    >
+      {billing.isTrialing ? "Trial" : TIER_LABEL[billing.tier] ?? billing.tier}
+    </span>
+  )
 }
 
 function WeeklyGoalRing({
@@ -228,6 +256,7 @@ function IndexPopup() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus | null>(null)
+  const [billing, setBilling] = useState<BillingSummary | null>(null)
 
   const renderedFromCache = useRef(false)
   const lastFetchTime = useRef<number>(0)
@@ -243,10 +272,12 @@ function IndexPopup() {
         setAuth(response.auth)
         fetchAnalytics(response.auth)
         fetchExtensionStatus(response.auth)
+        fetchBilling(response.auth)
       } else {
         setAuth(null)
         setAnalytics(null)
         setExtensionStatus(null)
+        setBilling(null)
       }
     })
   }
@@ -266,6 +297,25 @@ function IndexPopup() {
       }
     } catch (error) {
       console.error("Failed to fetch extension status:", error)
+    }
+  }
+
+  const fetchBilling = async (authState: AuthState) => {
+    try {
+      const response = await fetch(`${WEB_URL}/api/billing/status`, {
+        headers: { Authorization: `Bearer ${authState.apiKey}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setBilling({
+          tier: data.effectiveTier,
+          isTrialing: data.isTrialing,
+          draftsRemaining: data.remaining?.drafts ?? 0,
+          emailsRemaining: data.remaining?.emails ?? 0,
+        })
+      }
+    } catch (error) {
+      console.error("Failed to fetch billing status:", error)
     }
   }
 
@@ -422,11 +472,20 @@ function IndexPopup() {
         {auth ? (
           <div className="space-y-4">
             <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
-              <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Check className="h-3.5 w-3.5 text-[#16a34a]" />
-                Connected
-              </p>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Check className="h-3.5 w-3.5 text-[#16a34a]" />
+                  Connected
+                </p>
+                {billing && <PlanBadge billing={billing} />}
+              </div>
               <p className="truncate text-sm font-medium text-foreground">{auth.userEmail}</p>
+              {billing && (
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  {billing.draftsRemaining.toLocaleString()} drafts ·{" "}
+                  {billing.emailsRemaining.toLocaleString()} emails left this period
+                </p>
+              )}
             </div>
 
             {analyticsLoading ? (

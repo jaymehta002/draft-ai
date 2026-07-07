@@ -32,6 +32,7 @@ import { ReplyRateRing } from "@/components/dashboard/reply-rate-ring"
 import { TrophyCase } from "@/components/dashboard/trophy-case"
 import { TonePerformanceChart } from "@/components/dashboard/tone-performance-chart"
 import { MilestoneBadges } from "@/components/dashboard/milestone-badges"
+import { PlanUpgradeCard } from "@/components/billing/plan-upgrade-card"
 
 type EmailsData = Awaited<ReturnType<typeof getEmailsData>>
 
@@ -83,6 +84,8 @@ export default async function DashboardPage({
             </CardContent>
           </Card>
         )}
+
+        <PlanUpgradeCard />
 
         {(analytics.sentThisWeek ?? 0) > 0 && (
           <Card className="border-primary/20 bg-primary/5 shadow-sm">

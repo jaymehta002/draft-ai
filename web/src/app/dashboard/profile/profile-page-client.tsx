@@ -19,10 +19,11 @@ import {
 import { ProfileCard } from "@/components/profile-card"
 import { ProfileEditor } from "@/components/profile/profile-editor"
 import { PreferencesSection } from "@/components/dashboard/preferences-section"
+import { BillingTab } from "@/components/billing/billing-tab"
 import { saveCandidateProfile } from "@/app/actions"
 import { profileToFormData, syncLegacyFields } from "@/lib/candidate-profile"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
-import { ShieldCheck, Sliders, User } from "lucide-react"
+import { CreditCard, ShieldCheck, Sliders, User } from "lucide-react"
 
 export function ProfilePageClient({ initialProfile }: { initialProfile: CandidateProfileData }) {
   const router = useRouter()
@@ -107,6 +108,10 @@ export function ProfilePageClient({ initialProfile }: { initialProfile: Candidat
           <Sliders className="size-3.5" />
           Preferences
         </TabsTrigger>
+        <TabsTrigger value="billing" className="gap-2">
+          <CreditCard className="size-3.5" />
+          Billing
+        </TabsTrigger>
         <TabsTrigger value="security" className="gap-2">
           <ShieldCheck className="size-3.5" />
           Security
@@ -156,6 +161,10 @@ export function ProfilePageClient({ initialProfile }: { initialProfile: Candidat
           draftLength={profileData.draftLength}
           outreachLanguage={profileData.outreachLanguage}
         />
+      </TabsContent>
+
+      <TabsContent value="billing">
+        <BillingTab />
       </TabsContent>
 
       <TabsContent value="security">

@@ -4,6 +4,14 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { authenticateBearerRequest } from "@/lib/bearer-auth"
 import { generateFollowUpDraft } from "@/lib/follow-up-draft"
+import {
+  checkEntitlement,
+  getUserEntitlements,
+  incrementUsage,
+  isEnforcementEnabled,
+  limitReachedResponse,
+  UPGRADE_URL,
+} from "@/lib/entitlements"
 
 async function resolveUserId(req: Request): Promise<string | null> {
   const session = await getServerSession(authOptions)
@@ -39,7 +47,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid followUpType" }, { status: 400 })
     }
 
+    // Follow-ups are a Pro feature and count against the draft cap.
+    const ent = await getUserEntitlements(userId)
+    if (isEnforcementEnabled() && !ent.limits.followUps) {
+      return NextResponse.json(
+        { error: "feature_locked", feature: "follow_up", tier: ent.effectiveTier, upgradeUrl: UPGRADE_URL },
+        { status: 402 }
+      )
+    }
+    const draftCheck = await checkEntitlement(userId, "draft")
+    if (!draftCheck.allowed) return limitReachedResponse(draftCheck)
+
     const result = await generateFollowUpDraft(userId, sentOutreachId, followUpType)
+    await incrementUsage(userId, "draft")
 
     return NextResponse.json({ success: true, ...result })
   } catch (error: unknown) {

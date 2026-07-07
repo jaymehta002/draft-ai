@@ -1,0 +1,131 @@
+import type { Metadata } from "next"
+import Link from "next/link"
+import { notFound } from "next/navigation"
+import { Check, ArrowRight } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { DraftAIBrand } from "@/components/draft-ai-brand"
+import { PERSONAS, getPersona } from "@/lib/seo-content"
+import { siteUrl } from "@/lib/site"
+
+export function generateStaticParams() {
+  return PERSONAS.map((p) => ({ persona: p.slug }))
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ persona: string }>
+}): Promise<Metadata> {
+  const { persona: slug } = await params
+  const persona = getPersona(slug)
+  if (!persona) return {}
+  const url = `${siteUrl}/outreach/${persona.slug}`
+  return {
+    title: persona.metaTitle,
+    description: persona.metaDescription,
+    alternates: { canonical: url },
+    openGraph: {
+      title: persona.metaTitle,
+      description: persona.metaDescription,
+      url,
+    },
+  }
+}
+
+export default async function OutreachPersonaPage({
+  params,
+}: {
+  params: Promise<{ persona: string }>
+}) {
+  const { persona: slug } = await params
+  const persona = getPersona(slug)
+  if (!persona) notFound()
+
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: persona.faqs.map((f) => ({
+      "@type": "Question",
+      name: f.q,
+      acceptedAnswer: { "@type": "Answer", text: f.a },
+    })),
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
+
+      <header className="border-b border-border">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
+          <DraftAIBrand href="/" />
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/pricing">Pricing</Link>
+          </Button>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+          {persona.eyebrow}
+        </p>
+        <h1 className="mt-3 font-serif text-4xl leading-tight tracking-tight text-foreground sm:text-5xl">
+          {persona.title}
+        </h1>
+        <p className="mt-4 text-lg text-muted-foreground">{persona.subtitle}</p>
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Button size="lg" asChild>
+            <Link href={`/try?persona=${persona.slug}`}>
+              Try a draft free
+              <ArrowRight className="size-4" />
+            </Link>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
+            <Link href="/pricing">See plans</Link>
+          </Button>
+        </div>
+
+        <ul className="mt-12 grid gap-3 sm:grid-cols-2">
+          {persona.bullets.map((b) => (
+            <li
+              key={b}
+              className="flex items-start gap-2 rounded-xl border border-border bg-card p-4 text-sm text-foreground shadow-sm"
+            >
+              <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+              {b}
+            </li>
+          ))}
+        </ul>
+
+        <section className="mt-16">
+          <h2 className="font-serif text-2xl tracking-tight text-foreground">
+            Frequently asked questions
+          </h2>
+          <dl className="mt-6 space-y-6">
+            {persona.faqs.map((f) => (
+              <div key={f.q}>
+                <dt className="text-base font-semibold text-foreground">{f.q}</dt>
+                <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{f.a}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <div className="mt-16 rounded-2xl border border-primary/30 bg-primary/5 p-8 text-center">
+          <h2 className="font-serif text-2xl tracking-tight text-foreground">
+            Ready to get more replies?
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Generate your first personalized message in seconds — no credit card required.
+          </p>
+          <Button size="lg" className="mt-5" asChild>
+            <Link href="/try">Try Draft AI free</Link>
+          </Button>
+        </div>
+      </main>
+    </div>
+  )
+}

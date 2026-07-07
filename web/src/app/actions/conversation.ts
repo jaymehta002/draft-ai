@@ -85,6 +85,17 @@ export async function sendDraftFromWeb(draftId: string) {
   const profile = await prisma.candidateProfile.findUnique({ where: { userId: user.id } })
   if (!profile?.onboardingComplete) throw new Error("Complete your profile first")
 
+  const { checkEntitlement, incrementUsage, startProTrial } = await import("@/lib/entitlements")
+  const emailCheck = await checkEntitlement(user.id, "email")
+  if (!emailCheck.allowed) {
+    const err = new Error("limit_reached") as Error & { code?: string; feature?: string }
+    err.code = "limit_reached"
+    err.feature = "email"
+    throw err
+  }
+
+  const isFirstSend = (await prisma.sentOutreach.count({ where: { userId: user.id } })) === 0
+
   const { resolveOutreachSendFields } = await import("@/lib/resolve-send-metadata")
   const sendMeta = await resolveOutreachSendFields(user.id, draft.id, null)
 
@@ -182,7 +193,14 @@ export async function sendDraftFromWeb(draftId: string) {
   const { recordActivity } = await import("@/lib/engagement")
 
   await incrementSentStats(user.id)
+  await incrementUsage(user.id, "email")
   await recordActivity(user.id, "send")
+
+  if (isFirstSend) {
+    await startProTrial(user.id)
+    const { maybeRewardReferralOnFirstSend } = await import("@/lib/referral")
+    await maybeRewardReferralOnFirstSend(user.id)
+  }
 
   revalidatePath("/dashboard/drafts")
   revalidatePath("/dashboard")

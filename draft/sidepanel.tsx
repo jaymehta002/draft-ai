@@ -65,6 +65,7 @@ function SidePanel() {
   const [copied, setCopied] = useState(false)
   const [isCopying, setIsCopying] = useState(false)
   const [statusNote, setStatusNote] = useState<StatusNote | null>(null)
+  const [upgradeUrl, setUpgradeUrl] = useState<string | null>(null)
   const [showWhyDraft, setShowWhyDraft] = useState(true)
   const [showConfidenceNudge, setShowConfidenceNudge] = useState(true)
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null)
@@ -279,6 +280,10 @@ function SidePanel() {
           }
           void setDraftForPost(draft.postId, sentDraft)
         }
+      } else if (response?.limitReached) {
+        setSubmissionState("idle")
+        setUpgradeUrl(response.upgradeUrl || `${WEB_URL}/dashboard/profile?tab=billing`)
+        setStatusNote({ tone: "error", text: response.error || "Monthly limit reached" })
       } else {
         setSubmissionState("idle")
         setStatusNote({ tone: "error", text: response?.error || "Failed to send email" })
@@ -422,7 +427,11 @@ function SidePanel() {
           ) : isLoading ? (
             <LoadingState recipientName={draft.recipientName} />
           ) : draft.status === "error" ? (
-            <ErrorState message={draft.error || "Something went wrong"} />
+            <ErrorState
+              message={draft.error || "Something went wrong"}
+              limitReached={draft.limitReached}
+              upgradeUrl={draft.upgradeUrl}
+            />
           ) : isReady ? (
             <div className="space-y-6">
               {draft.recipientName && (
@@ -579,6 +588,16 @@ function SidePanel() {
                   </StatusBanner>
                 )}
               </AnimatePresence>
+
+              {upgradeUrl && (
+                <button
+                  onClick={() => chrome.tabs.create({ url: upgradeUrl })}
+                  className="btn-primary mt-2"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Upgrade your plan
+                </button>
+              )}
             </div>
           ) : null}
         </main>
@@ -706,17 +725,50 @@ function LoadingState({ recipientName }: { recipientName: string }) {
   )
 }
 
-function ErrorState({ message }: { message: string }) {
+function ErrorState({
+  message,
+  limitReached,
+  upgradeUrl,
+}: {
+  message: string
+  limitReached?: boolean
+  upgradeUrl?: string
+}) {
   return (
     <div className="flex min-h-[65vh] items-center justify-center text-center">
       <div className="max-w-[280px]">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-          <AlertCircle className="h-6 w-6 text-destructive" />
+        <div
+          className={cn(
+            "mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full",
+            limitReached ? "bg-primary/10" : "bg-destructive/10"
+          )}
+        >
+          {limitReached ? (
+            <Sparkles className="h-6 w-6 text-primary" />
+          ) : (
+            <AlertCircle className="h-6 w-6 text-destructive" />
+          )}
         </div>
         <h2 className="mb-2 text-xl font-semibold text-foreground">
-          Couldn&apos;t build the draft
+          {limitReached ? "You've hit your plan limit" : "Couldn't build the draft"}
         </h2>
-        <p className="text-sm leading-relaxed text-destructive">{message}</p>
+        <p
+          className={cn(
+            "text-sm leading-relaxed",
+            limitReached ? "text-muted-foreground" : "text-destructive"
+          )}
+        >
+          {message}
+        </p>
+        {limitReached && upgradeUrl && (
+          <button
+            onClick={() => chrome.tabs.create({ url: upgradeUrl })}
+            className="btn-primary mt-4"
+          >
+            <Sparkles className="h-4 w-4" />
+            Upgrade your plan
+          </button>
+        )}
       </div>
     </div>
   )

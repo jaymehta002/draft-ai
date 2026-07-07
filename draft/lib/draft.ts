@@ -55,6 +55,8 @@ export type DraftPreview = {
     recipientProfileUrl?: string
   }
   error?: string
+  limitReached?: boolean
+  upgradeUrl?: string
   updatedAt: number
 }
 

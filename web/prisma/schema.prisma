@@ -7,41 +7,132 @@ datasource db {
 }
 
 model User {
-  id               String            @id @default(cuid())
-  name             String?
-  email            String?           @unique
-  emailVerified    DateTime?
-  image            String?
-  accounts         Account[]
-  sessions         Session[]
-  hiringProfile    HiringProfile?
-  candidateProfile CandidateProfile?
-  apiKeys          ApiKey[]
-  connectTokens    ConnectToken[]
-  postDrafts       PostDraft[]
-  sentOutreach     SentOutreach[]
-  stats            UserStats?
-  emailThreads     EmailThread[]
-  emailMessages    EmailMessage[]
-  mailboxSync      MailboxSync?
+  id                  String            @id @default(cuid())
+  name                String?
+  email               String?           @unique
+  emailVerified       DateTime?
+  image               String?
+  accounts            Account[]
+  sessions            Session[]
+  hiringProfile       HiringProfile?
+  candidateProfile    CandidateProfile?
+  apiKeys             ApiKey[]
+  connectTokens       ConnectToken[]
+  postDrafts          PostDraft[]
+  sentOutreach        SentOutreach[]
+  stats               UserStats?
+  emailThreads        EmailThread[]
+  emailMessages       EmailMessage[]
+  mailboxSync         MailboxSync?
   extensionLastSeenAt DateTime?
-  engagement       UserEngagement?
-  milestones       UserMilestone[]
+  engagement          UserEngagement?
+  milestones          UserMilestone[]
+  subscription        Subscription?
+  usageLedgers        UsageLedger[]
+  referralsGiven      Referral[]        @relation("ReferralsGiven")
+  referralsReceived   Referral[]        @relation("ReferralsReceived")
+  feedback            Feedback[]
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  POWER
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  dodoCustomerId     String             @unique
+  dodoSubscriptionId String?            @unique
+  dodoPlanId         String?
+  tier               PlanTier           @default(FREE)
+  status             SubscriptionStatus @default(ACTIVE)
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UsageLedger {
+  id           String   @id @default(cuid())
+  userId       String
+  periodStart  DateTime // aligns with subscription period or calendar month for free
+  periodEnd    DateTime
+  draftsUsed   Int      @default(0)
+  emailsSent   Int      @default(0)
+  variantsUsed Int      @default(0)
+  bonusDrafts  Int      @default(0) // top-up + referral credits, consumed before hitting the cap
+  bonusEmails  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodStart])
+  @@index([userId, periodEnd])
+}
+
+model BillingEvent {
+  id          String   @id // provider event ID for idempotency
+  type        String
+  provider    String   @default("dodo")
+  processedAt DateTime @default(now())
+}
+
+model Referral {
+  id          String    @id @default(cuid())
+  referrerId  String
+  refereeId   String?   @unique
+  code        String    @unique
+  bonusDrafts Int       @default(10)
+  redeemedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  referrer User  @relation("ReferralsGiven", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee  User? @relation("ReferralsReceived", fields: [refereeId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId])
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  npsScore  Int?
+  comment   String?  @db.Text
+  context   String? // e.g. "post_trial", "30_day"
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String? @db.Text
-  access_token       String? @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String? @db.Text
-  session_state      String?
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -65,15 +156,15 @@ model VerificationToken {
 }
 
 model HiringProfile {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  role        String
-  compRange   String?
-  stack       String?
-  location    String?
-  pitchBlurb  String   @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  role       String
+  compRange  String?
+  stack      String?
+  location   String?
+  pitchBlurb String   @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -142,25 +233,25 @@ model CandidateProfile {
 }
 
 model PostDraft {
-  id                  String        @id @default(cuid())
+  id                  String   @id @default(cuid())
   userId              String
   postId              String
   postUrl             String?
   platform            String
-  postText            String        @db.Text
+  postText            String   @db.Text
   recipientName       String?
   recipientEmail      String?
   recipientHandle     String?
   recipientProfileUrl String?
   actionMode          String
   subject             String?
-  message             String        @db.Text
+  message             String   @db.Text
   draftResponse       Json
   profileVersion      String
   industryTag         String?
-  cacheHits           Int           @default(0)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  cacheHits           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   sentOutreach SentOutreach?
@@ -201,8 +292,8 @@ model SentOutreach {
   recipientHandle     String?
   recipientProfileUrl String?
   gmailMessageId      String?
-  rfcMessageId        String?   // RFC 2822 Message-ID header we injected
-  gmailThreadId       String?   // Gmail's native threadId from send response
+  rfcMessageId        String? // RFC 2822 Message-ID header we injected
+  gmailThreadId       String? // Gmail's native threadId from send response
   subject             String?
   message             String    @db.Text
   actionMode          String
@@ -216,14 +307,13 @@ model SentOutreach {
   industryTag         String?
   sentAt              DateTime  @default(now())
 
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  postDraft   PostDraft?    @relation(fields: [postDraftId], references: [id], onDelete: SetNull)
-  variant     DraftVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postDraft        PostDraft?        @relation(fields: [postDraftId], references: [id], onDelete: SetNull)
+  variant          DraftVariant?     @relation(fields: [variantId], references: [id], onDelete: SetNull)
   emailThread      EmailThread?
   conversationMeta ConversationMeta?
 
   @@index([variantId])
-
   @@index([userId, sentAt])
   @@index([postId])
   @@index([rfcMessageId])
@@ -240,8 +330,8 @@ model UserStats {
   totalReplied    Int      @default(0)
   repliedThisWeek Int      @default(0)
   replyRate7d     Float?
-  lastResetDate   String   // YYYY-MM-DD format
-  lastResetWeek   String   // YYYY-Wxx format
+  lastResetDate   String // YYYY-MM-DD format
+  lastResetWeek   String // YYYY-Wxx format
   updatedAt       DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -250,33 +340,33 @@ model UserStats {
 }
 
 model WinningTemplate {
-  id           String   @id @default(cuid())
-  userId       String?
-  industryTag  String?
-  toneUsed     String?
-  excerpt      String   @db.Text
-  matchScore   Int?
-  isPublished  Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String?
+  industryTag String?
+  toneUsed    String?
+  excerpt     String   @db.Text
+  matchScore  Int?
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
   @@index([industryTag, isPublished])
   @@index([userId, isPublished])
 }
 
 model UserEngagement {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  currentStreak         Int       @default(0)
-  longestStreak         Int       @default(0)
-  lastActivityAt        DateTime?
-  weeklyGoal            Int       @default(5)
-  weeklyGoalExplicit    Boolean   @default(false)
-  weekProgress          Int       @default(0)
-  lastWeekReset         String
-  pendingCelebrations   Json?
-  lastDigestSentAt      DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  currentStreak       Int       @default(0)
+  longestStreak       Int       @default(0)
+  lastActivityAt      DateTime?
+  weeklyGoal          Int       @default(5)
+  weeklyGoalExplicit  Boolean   @default(false)
+  weekProgress        Int       @default(0)
+  lastWeekReset       String
+  pendingCelebrations Json?
+  lastDigestSentAt    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -316,14 +406,14 @@ model EmailThread {
   userId           String
   sentOutreachId   String?  @unique // the originating SentOutreach record
   subject          String?
-  participantEmail String?  // the external contact's email address
+  participantEmail String? // the external contact's email address
   lastMessageAt    DateTime @default(now())
-  isRead           Boolean  @default(true)  // false when an inbound reply arrives
+  isRead           Boolean  @default(true) // false when an inbound reply arrives
   messageCount     Int      @default(1)
   createdAt        DateTime @default(now())
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sentOutreach SentOutreach? @relation(fields: [sentOutreachId], references: [id], onDelete: SetNull)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentOutreach SentOutreach?  @relation(fields: [sentOutreachId], references: [id], onDelete: SetNull)
   messages     EmailMessage[]
 
   @@index([userId, lastMessageAt])
@@ -335,17 +425,17 @@ model EmailMessage {
   id               String   @id @default(cuid())
   threadId         String
   userId           String
-  direction        String   // "OUTBOUND" | "INBOUND"
+  direction        String // "OUTBOUND" | "INBOUND"
   fromAddress      String
   toAddresses      String?  @db.Text // JSON-serialised string[]
   subject          String?
   snippet          String?  @db.Text // first ~300 chars of plain text
   rawBody          String?  @db.Text // full plain-text body
-  rfcMessageId     String?  // Message-ID header
-  inReplyTo        String?  // In-Reply-To header
+  rfcMessageId     String? // Message-ID header
+  inReplyTo        String? // In-Reply-To header
   references       String?  @db.Text // References header (space-separated)
-  providerMsgId    String?  // Gmail message ID
-  providerThreadId String?  // Gmail thread ID
+  providerMsgId    String? // Gmail message ID
+  providerThreadId String? // Gmail thread ID
   isRead           Boolean  @default(false)
   receivedAt       DateTime
   createdAt        DateTime @default(now())
@@ -364,9 +454,9 @@ model MailboxSync {
   id                    String   @id @default(cuid())
   userId                String   @unique
   provider              String   @default("gmail")
-  gmailHistoryId        String?  // last processed Gmail historyId (opaque string)
+  gmailHistoryId        String? // last processed Gmail historyId (opaque string)
   encryptedRefreshToken String?  @db.Text // AES-256-GCM encrypted refresh token
-  syncError             String?  // last error message, null when healthy
+  syncError             String? // last error message, null when healthy
   lastSyncedAt          DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

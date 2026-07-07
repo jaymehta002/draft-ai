@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation"
 import { usePathname } from "next/navigation"
 import { AppSidebar, MobileMenuButton, type DashboardSection } from "@/components/app-sidebar"
 import { AccountMenu } from "@/components/account-menu"
+import { UsageBanner } from "@/components/billing/usage-banner"
+import { ReferralRedeemer } from "@/components/billing/referral-capture"
 import { dashboardPathForSection, dashboardSectionFromPathname } from "@/lib/dashboard-routes"
 
 const SECTION_LABELS: Record<DashboardSection, string> = {
@@ -43,6 +45,7 @@ export function DashboardShell({ active, counts, user, children }: DashboardShel
 
   return (
     <div className="min-h-screen bg-background flex">
+      <ReferralRedeemer />
       <AppSidebar
         active={effectiveActive}
         onNavigate={navigateSection}
@@ -69,6 +72,7 @@ export function DashboardShell({ active, counts, user, children }: DashboardShel
               title={user?.title}
               onNavigate={(s) => {
                 if (s === "profile:preferences") router.push("/dashboard/profile?tab=preferences")
+                else if (s === "profile:billing") router.push("/dashboard/profile?tab=billing")
                 else if (s === "profile") router.push("/dashboard/profile?tab=profile")
                 else if (s === "extension") router.push("/dashboard/extension")
                 else navigateSection(s as DashboardSection)
@@ -76,6 +80,8 @@ export function DashboardShell({ active, counts, user, children }: DashboardShel
             />
           </div>
         </header>
+
+        <UsageBanner />
 
         <main className="flex-1 overflow-auto bg-background">
           <ReplyCelebration />

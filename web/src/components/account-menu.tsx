@@ -1,7 +1,7 @@
 "use client"
 
 import { signOut } from "next-auth/react"
-import { ChevronDown, LogOut, Settings, User } from "lucide-react"
+import { ChevronDown, CreditCard, LogOut, Settings, User } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -83,6 +83,13 @@ export function AccountMenu({ name, email, image, title, onNavigate }: AccountMe
         >
           <Settings className="h-4 w-4 text-muted-foreground" />
           Preferences
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="rounded-lg px-3 py-2.5"
+          onSelect={() => onNavigate?.("profile:billing")}
+        >
+          <CreditCard className="h-4 w-4 text-muted-foreground" />
+          Plan &amp; billing
         </DropdownMenuItem>
         <DropdownMenuItem
           className="rounded-lg px-3 py-2.5"

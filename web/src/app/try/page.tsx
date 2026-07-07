@@ -11,6 +11,7 @@ import { DraftAIBrand } from "@/components/draft-ai-brand"
 import { GoogleSignInExplainer } from "@/components/google-sign-in-explainer"
 import { SAMPLE_POST_TEXT } from "@/lib/draft-prompt"
 import { FadeIn } from "@/components/motion"
+import { ReferralCapture } from "@/components/billing/referral-capture"
 
 type DraftResult = {
   message: string
@@ -30,6 +31,7 @@ export default function TryPage() {
         </div>
       }
     >
+      <ReferralCapture />
       <TryPageContent />
     </Suspense>
   )

@@ -6,6 +6,8 @@ import { randomUUID } from "crypto"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { resolveUploadThingFileUrl } from "@/lib/uploadthing-server"
 import { incrementSentStats } from "@/lib/user-stats"
+import { checkEntitlement, incrementUsage, limitReachedResponse, startProTrial } from "@/lib/entitlements"
+import { maybeRewardReferralOnFirstSend } from "@/lib/referral"
 import { recordActivity } from "@/lib/engagement"
 import { resolveOutreachSendFields } from "@/lib/resolve-send-metadata"
 import { getGmailSendClient } from "@/lib/email-sync/token-manager"
@@ -137,6 +139,13 @@ export async function POST(req: Request) {
       }
     }
 
+    // Enforce the monthly email cap before we actually send.
+    const emailCheck = await checkEntitlement(apiKey.userId, "email")
+    if (!emailCheck.allowed) return limitReachedResponse(emailCheck)
+
+    const isFirstSend =
+      (await prisma.sentOutreach.count({ where: { userId: apiKey.userId } })) === 0
+
     const oauth2Client = tokenResult.oauth2Client
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
@@ -250,7 +259,14 @@ export async function POST(req: Request) {
     })
 
     await incrementSentStats(apiKey.userId)
+    await incrementUsage(apiKey.userId, "email")
     await recordActivity(apiKey.userId, "send")
+
+    if (isFirstSend) {
+      // Trial psychology: let them feel the win, then start the 14-day Pro trial.
+      await startProTrial(apiKey.userId)
+      await maybeRewardReferralOnFirstSend(apiKey.userId)
+    }
 
     return NextResponse.json({
       success: true,
