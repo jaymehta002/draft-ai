@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
-import { ensureUserApiKey } from "@/lib/api-key"
+import { createUserApiKey } from "@/lib/api-key"
+import { consumeConnectToken, isValidConnectState } from "@/lib/connect-token"
 import { prisma } from "@/lib/prisma"
 
 export async function POST(req: Request) {
@@ -17,7 +18,10 @@ export async function POST(req: Request) {
 
     if (!profile?.onboardingComplete) {
       return NextResponse.json(
-        { error: "Complete your profile onboarding before connecting the extension" },
+        {
+          error: "Complete your profile onboarding before connecting the extension",
+          code: "onboarding_incomplete",
+        },
         { status: 400 }
       )
     }
@@ -25,11 +29,29 @@ export async function POST(req: Request) {
     const body = await req.json()
     const state = body.state as string
 
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(state)) {
-      return NextResponse.json({ error: "Invalid connection state" }, { status: 400 })
+    if (!isValidConnectState(state)) {
+      return NextResponse.json(
+        { error: "Invalid connection state", code: "invalid_state" },
+        { status: 400 }
+      )
     }
 
-    const apiKey = await ensureUserApiKey(session.user.id)
+    const tokenResult = await consumeConnectToken(session.user.id, state)
+
+    if (!tokenResult.ok) {
+      const status =
+        tokenResult.code === "already_connected"
+          ? 409
+          : tokenResult.code === "expired_state"
+            ? 410
+            : 400
+      return NextResponse.json(
+        { error: "Connection state invalid", code: tokenResult.code },
+        { status }
+      )
+    }
+
+    const apiKey = await createUserApiKey(session.user.id)
 
     return NextResponse.json({
       state,

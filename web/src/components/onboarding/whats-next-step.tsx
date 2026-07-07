@@ -73,7 +73,7 @@ export function WhatsNextStep() {
       </div>
 
       <Button asChild className="mt-6 gap-2 self-start">
-        <Link href="/dashboard?section=extension">
+        <Link href="/dashboard/extension">
           <Check className="size-4" />
           Open Integrations
         </Link>

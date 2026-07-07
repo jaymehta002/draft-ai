@@ -265,13 +265,15 @@ export function MarketingHome() {
               deliberate, and actually get replies.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <SignInButton size="lg" className="group">
-                Get started free
-                <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-              </SignInButton>
-              <Button variant="outline" size="lg" asChild>
-                <Link href="/try">Try a draft</Link>
+              <Button size="lg" className="group" asChild>
+                <Link href="/try">
+                  Try a draft
+                  <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                </Link>
               </Button>
+              <SignInButton size="lg" variant="outline">
+                Get started free
+              </SignInButton>
               <Button variant="ghost" size="lg" asChild>
                 <a href="#how">See how it works</a>
               </Button>
@@ -419,6 +421,7 @@ export function MarketingHome() {
           <nav className="flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#how" className="transition-colors hover:text-foreground">How it works</a>
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
+            <Link href="/pricing" className="transition-colors hover:text-foreground">Pricing</Link>
             <Link href="/privacy-policy" className="transition-colors hover:text-foreground">Privacy</Link>
             <SignInButton variant="ghost" className="transition-colors hover:text-foreground text-sm text-muted-foreground h-auto p-0">
               Sign in

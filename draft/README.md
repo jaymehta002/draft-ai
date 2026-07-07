@@ -1,33 +1,28 @@
-This is a [Plasmo extension](https://docs.plasmo.com/) project bootstrapped with [`plasmo init`](https://www.npmjs.com/package/plasmo).
+# Draft AI — Chrome Extension
 
-## Getting Started
-
-First, run the development server:
+## Local development
 
 ```bash
-pnpm dev
-# or
+cp .env.example .env
+# Set PLASMO_PUBLIC_WEB_URL=http://localhost:3000
+npm install
 npm run dev
 ```
 
-Open your browser and load the appropriate development build. For example, if you are developing for the chrome browser, using manifest v3, use: `build/chrome-mv3-dev`.
+## Chrome Web Store checklist
 
-You can start editing the popup by modifying `popup.tsx`. It should auto-update as you make changes. To add an options page, simply add a `options.tsx` file to the root of the project, with a react component default exported. Likewise to add a content page, add a `content.ts` file to the root of the project, importing some module and do some logic, then reload the extension on your browser.
+Before submitting an update:
 
-For further guidance, [visit our Documentation](https://docs.plasmo.com/)
+- [ ] Screenshots 1280×800: feed Draft button, side panel editor, dashboard analytics
+- [ ] Promo tile 440×280
+- [ ] 30s demo video (screen recording)
+- [ ] Listing copy matches actual capabilities (feed posts, human-in-the-loop send)
+- [ ] `assets/icon.svg` matches web brand mark
+- [ ] `PLASMO_PUBLIC_WEB_URL` points to production domain in `.env.production`
 
-## Making production build
-
-Run the following:
+## Build
 
 ```bash
-pnpm build
-# or
 npm run build
+npm run package
 ```
-
-This should create a production bundle for your extension, ready to be zipped and published to the stores.
-
-## Submit to the webstores
-
-The easiest way to deploy your Plasmo extension is to use the built-in [bpp](https://bpp.browser.market) GitHub action. Prior to using this action however, make sure to build your extension and upload the first version to the store to establish the basic credentials. Then, simply follow [this setup instruction](https://docs.plasmo.com/framework/workflows/submit) and you should be on your way for automated submission!

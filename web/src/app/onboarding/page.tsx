@@ -1,8 +1,8 @@
 "use client"
 
 import { useSession } from "next-auth/react"
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { AnimatePresence } from "framer-motion"
 import { ChevronLeft, ChevronRight, Check } from "lucide-react"
 import { getOnboardingData, saveCandidateProfile } from "../actions"
@@ -16,6 +16,7 @@ import {
 } from "@/lib/onboarding-fields"
 import {
   buildStepQueue,
+  buildQuickStepQueue,
   stepKey,
   getStepField,
   getStepLabel,
@@ -45,8 +46,24 @@ const emptyProfileState = emptyProfile()
 type FlowPhase = "resume" | "extracting" | "steps"
 
 export default function OnboardingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
+      <OnboardingContent />
+    </Suspense>
+  )
+}
+
+function OnboardingContent() {
   const { status } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isQuickMode = searchParams.get("full") !== "true"
   const [profile, setProfile] = useState<CandidateProfileData>(emptyProfileState)
   const [aiFilledFields, setAiFilledFields] = useState<Set<keyof CandidateProfileData>>(
     new Set()
@@ -80,11 +97,15 @@ export default function OnboardingPage() {
       filled: Set<keyof CandidateProfileData>,
       includeReveal: boolean
     ) => {
-      setStepQueue(buildStepQueue(nextProfile, filled, { includeReveal }))
+      setStepQueue(
+        isQuickMode
+          ? buildQuickStepQueue(nextProfile, filled, { includeReveal })
+          : buildStepQueue(nextProfile, filled, { includeReveal })
+      )
       setStepIndex(0)
       setFlowPhase("steps")
     },
-    []
+    [isQuickMode]
   )
 
   useEffect(() => {
@@ -279,7 +300,7 @@ export default function OnboardingPage() {
     setError(null)
     try {
       await saveCandidateProfile(buildFormData(), true)
-      router.push("/dashboard?section=extension")
+      router.push("/dashboard/extension")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding")
     } finally {

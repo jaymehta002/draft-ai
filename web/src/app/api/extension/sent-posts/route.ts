@@ -1,21 +1,12 @@
 import { NextResponse } from "next/server"
+import { authenticateBearerRequest } from "@/lib/bearer-auth"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization")
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const token = authHeader.split(" ")[1]
-    const apiKey = await prisma.apiKey.findUnique({
-      where: { key: token },
-    })
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "Invalid API key" }, { status: 401 })
-    }
+    const auth = await authenticateBearerRequest(req, { limit: 120, windowMs: 60 * 60 * 1000 })
+    if (auth.error) return auth.error
+    const apiKey = auth.apiKey!
 
     const sentOutreach = await prisma.sentOutreach.findMany({
       where: { userId: apiKey.userId },

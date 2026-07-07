@@ -5,9 +5,27 @@ import { prisma } from "@/lib/prisma"
 import { openai, OPENAI_MODEL } from "@/lib/openai"
 import { buildDraftSystemPrompt, SAMPLE_POST_TEXT, type DraftProfileContext } from "@/lib/draft-prompt"
 import { normalizeDraftResult, type DraftResult } from "@/lib/outreach"
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+
+function clientIp(req: Request): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  )
+}
 
 export async function POST(req: Request) {
   try {
+    const limited = rateLimit({
+      key: `try-draft:${clientIp(req)}`,
+      limit: 5,
+      windowMs: 60 * 60 * 1000,
+    })
+    if (!limited.success) {
+      return rateLimitResponse(limited.resetAt)
+    }
+
     const session = await getServerSession(authOptions)
     const body = await req.json()
     const postText = (body.postText as string)?.trim() || SAMPLE_POST_TEXT

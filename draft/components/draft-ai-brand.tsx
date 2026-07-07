@@ -1,20 +1,60 @@
 import { cn } from "~lib/utils"
 
-function FeatherMark({ className }: { className?: string }) {
+export function DraftAIMark({ className }: { className?: string }) {
   return (
     <svg
       className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
+      viewBox="0 0 200 240"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
     >
-      <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
-      <line x1="16" y1="8" x2="2" y2="22" />
-      <line x1="17.5" y1="15" x2="9" y2="15" />
+      <defs>
+        <linearGradient id="pageGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#eef5ff" />
+        </linearGradient>
+        <linearGradient id="foldGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#e2d7ff" />
+          <stop offset="100%" stopColor="#b9b0ff" />
+        </linearGradient>
+        <clipPath id="foldClip">
+          <path d="M140,20 L140,54 L174,54 Z" />
+        </clipPath>
+      </defs>
+      <path
+        d="M30,20 H140 L170,50 V220 Q170,228 162,228 H38 Q30,228 30,220 V28 Q30,20 38,20 Z"
+        fill="url(#pageGrad)"
+        stroke="#7ea8ff"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M140,20 L140,54 L174,54 Z"
+        fill="url(#foldGrad)"
+        stroke="#7ea8ff"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <g clipPath="url(#foldClip)" opacity="0.95">
+        <circle cx="154" cy="30" r="3" fill="#6e63ff" opacity="0.75" />
+        <circle cx="164" cy="34" r="3" fill="#6e63ff" opacity="0.65" />
+        <circle cx="148" cy="40" r="3" fill="#6e63ff" opacity="0.6" />
+        <circle cx="158" cy="44" r="3" fill="#6e63ff" opacity="0.55" />
+        <circle cx="170" cy="42" r="3" fill="#6e63ff" opacity="0.5" />
+      </g>
+      <rect x="56" y="84" width="88" height="8" rx="4" fill="#7fa7ea" opacity="0.9" />
+      <rect x="56" y="106" width="104" height="8" rx="4" fill="#7fa7ea" opacity="0.9" />
+      <rect x="56" y="128" width="72" height="8" rx="4" fill="#7fa7ea" opacity="0.9" />
+      <g transform="translate(160 28)">
+        <path
+          d="M0,-14 L3,-4 L14,0 L3,4 L0,14 L-3,4 L-14,0 L-3,-4 Z"
+          fill="#f4f8ff"
+          stroke="#6d8fff"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <circle cx="10" cy="-10" r="3" fill="#f4f8ff" stroke="#6d8fff" strokeWidth="2" />
+      </g>
     </svg>
   )
 }
@@ -45,49 +85,42 @@ export function DraftAILogo({
         className
       )}
     >
-      <FeatherMark className={iconSizes[size]} />
+      <DraftAIMark className={iconSizes[size]} />
     </span>
   )
 }
 
 export function DraftAIBrand({
-  subtitle = "Outreach Studio",
+  subtitle,
   className,
-  titleClassName,
+  variant = "full",
   showSyncIndicator = false,
 }: {
   subtitle?: string
   className?: string
-  titleClassName?: string
+  variant?: "full" | "compact" | "monogram"
   showSyncIndicator?: boolean
 }) {
   return (
-    <div className={cn("flex items-center gap-3", className)}>
-      <DraftAILogo size="sm" />
-      <div>
-        <p
-          className={cn(
-            "text-base font-semibold tracking-tight text-foreground flex items-center gap-2",
-            titleClassName
-          )}
-        >
-          <span className="font-serif">
-            Draft <span className="text-primary">AI</span>
-          </span>
-          {showSyncIndicator && (
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse"
-              aria-hidden="true"
-              title="Syncing"
-            />
-          )}
-        </p>
-        {subtitle && (
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground mt-0.5">
-            {subtitle}
-          </p>
+    <div className={cn("group flex items-center gap-3", className)}>
+      <div className="relative">
+        <DraftAILogo size={variant === "compact" ? "sm" : "md"} />
+        {showSyncIndicator && (
+          <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-background bg-primary animate-pulse" />
         )}
       </div>
+      {variant !== "monogram" && (
+        <span className="leading-none">
+          <span className="block font-serif text-[15px] font-semibold tracking-tight text-foreground">
+            Draft <span className="text-primary">AI</span>
+          </span>
+          {subtitle && variant === "full" && (
+            <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {subtitle}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   )
 }

@@ -1,0 +1,7 @@
+DELETE FROM "ApiKey";
+
+ALTER TABLE "ApiKey" DROP COLUMN "key";
+ALTER TABLE "ApiKey" ADD COLUMN "keyHash" TEXT NOT NULL;
+ALTER TABLE "ApiKey" ADD COLUMN "keyPrefix" TEXT NOT NULL;
+
+CREATE UNIQUE INDEX "ApiKey_keyHash_key" ON "ApiKey"("keyHash");

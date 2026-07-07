@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect } from "react"
+import Link from "next/link"
 import { AlertTriangle } from "lucide-react"
+import * as Sentry from "@sentry/nextjs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -14,6 +16,7 @@ export default function DashboardError({
 }) {
   useEffect(() => {
     console.error("Dashboard error:", error)
+    Sentry.captureException(error)
   }, [error])
 
   return (
@@ -37,7 +40,7 @@ export default function DashboardError({
             Try again
           </Button>
           <Button variant="ghost" size="lg" className="w-full" asChild>
-            <a href="/">Back to home</a>
+            <Link href="/">Back to home</Link>
           </Button>
         </CardContent>
       </Card>

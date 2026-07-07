@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ExternalLink, LogOut, Loader2, Check, TrendingUp, Send, FileText, Circle } from "lucide-react"
+import { ExternalLink, LogOut, Loader2, Check, TrendingUp, Send, FileText, Circle, Flame } from "lucide-react"
 import "./style.css"
 import { DraftAIBrand } from "~components/draft-ai-brand"
 import { WEB_URL } from "~lib/config"
@@ -23,12 +23,116 @@ type Analytics = {
   repliedThisWeek?: number
   replyRate?: number
   replyRate7d?: number
+  currentStreak?: number
+  weeklyGoal?: number
+  weekProgress?: number
+  milestones?: string[]
 }
 
 type ExtensionStatus = {
   hasProfile: boolean
   gmailConnected: boolean
   hasDrafted: boolean
+}
+
+function WeeklyGoalRing({
+  progress,
+  goal,
+  onGoalChange,
+}: {
+  progress: number
+  goal: number
+  onGoalChange: (g: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const pct = goal > 0 ? Math.min((progress / goal) * 100, 100) : 0
+  const circumference = 2 * Math.PI * 18
+  const offset = circumference - (pct / 100) * circumference
+
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-3">
+      <div className="flex items-center gap-3">
+        <div className="relative size-12 shrink-0">
+          <svg className="size-12 -rotate-90" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="#e5e5e5" strokeWidth="3" />
+            <circle
+              cx="22"
+              cy="22"
+              r="18"
+              fill="none"
+              stroke="#16a34a"
+              strokeWidth="3"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-foreground">
+            {progress}/{goal}
+          </span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-foreground">Weekly goal</p>
+          <p className="text-[10px] text-muted-foreground">conversations started</p>
+          {editing ? (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {[3, 5, 10, 15].map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => {
+                    onGoalChange(g)
+                    setEditing(false)
+                  }}
+                  className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${
+                    g === goal
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="mt-1 text-[10px] text-primary hover:underline"
+            >
+              Change goal
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EngagementRow({
+  analytics,
+  onGoalChange,
+}: {
+  analytics: Analytics
+  onGoalChange: (g: number) => void
+}) {
+  const streak = analytics.currentStreak ?? 0
+  const goal = analytics.weeklyGoal ?? 5
+  const progress = analytics.weekProgress ?? 0
+
+  return (
+    <div className="space-y-3">
+      {streak > 0 && (
+        <div className="flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2">
+          <Flame className="h-4 w-4 text-orange-500" />
+          <span className="text-xs font-semibold text-orange-700">
+            {streak}-day conversation streak
+          </span>
+        </div>
+      )}
+      <WeeklyGoalRing progress={progress} goal={goal} onGoalChange={onGoalChange} />
+    </div>
+  )
 }
 
 function SetupChecklist({
@@ -54,7 +158,7 @@ function SetupChecklist({
     {
       label: "Gmail ready",
       done: status?.gmailConnected ?? false,
-      href: `${WEB_URL}/dashboard?section=extension`,
+      href: `${WEB_URL}/dashboard/extension`,
     },
     {
       label: "First outreach",
@@ -219,6 +323,7 @@ function IndexPopup() {
 
         fetchAnalytics(authState)
         fetchExtensionStatus(authState)
+        chrome.runtime.sendMessage({ type: "SEND_HEARTBEAT" })
       }
 
       revalidate({ silent: renderedFromCache.current })
@@ -257,6 +362,26 @@ function IndexPopup() {
         setStatusMessage(response?.error || "Failed to open dashboard")
       }
     })
+  }
+
+  const handleGoalChange = async (goal: number) => {
+    if (!auth?.apiKey) return
+    try {
+      const response = await fetch(`${WEB_URL}/api/extension/engagement`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${auth.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ weeklyGoal: goal }),
+      })
+      if (response.ok) {
+        setAnalytics((prev) => (prev ? { ...prev, weeklyGoal: goal } : prev))
+        fetchAnalytics(auth, true)
+      }
+    } catch (error) {
+      console.error("Failed to update weekly goal:", error)
+    }
   }
 
   const handleDisconnect = () => {
@@ -312,31 +437,37 @@ function IndexPopup() {
                 <SkeletonBar className="h-24 w-full rounded-xl" />
               </div>
             ) : analytics ? (
-              <div className="grid grid-cols-2 gap-3">
-                <StatCard
-                  icon={<Send className="h-4 w-4" />}
-                  label="Sent today"
-                  value={analytics.sentToday}
-                  accent
+              <>
+                <EngagementRow
+                  analytics={analytics}
+                  onGoalChange={handleGoalChange}
                 />
-                <StatCard
-                  icon={<FileText className="h-4 w-4" />}
-                  label="Drafts today"
-                  value={analytics.draftsToday}
-                />
-                <StatCard
-                  icon={<TrendingUp className="h-4 w-4" />}
-                  label="This week"
-                  value={analytics.sentThisWeek}
-                />
-                <StatCard
-                  icon={<Check className="h-4 w-4" />}
-                  label="Reply rate"
-                  value={`${analytics.replyRate ?? 0}%`}
-                  sub={`${analytics.totalReplied ?? 0} replied`}
-                  accent
-                />
-              </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard
+                    icon={<Send className="h-4 w-4" />}
+                    label="Started today"
+                    value={analytics.sentToday}
+                    accent
+                  />
+                  <StatCard
+                    icon={<FileText className="h-4 w-4" />}
+                    label="Drafts today"
+                    value={analytics.draftsToday}
+                  />
+                  <StatCard
+                    icon={<TrendingUp className="h-4 w-4" />}
+                    label="This week"
+                    value={analytics.sentThisWeek}
+                  />
+                  <StatCard
+                    icon={<Check className="h-4 w-4" />}
+                    label="Reply rate"
+                    value={`${analytics.replyRate ?? 0}%`}
+                    sub={`${analytics.totalReplied ?? 0} replied`}
+                    accent
+                  />
+                </div>
+              </>
             ) : null}
 
             <SetupChecklist auth={auth} analytics={analytics} status={extensionStatus} />
@@ -373,7 +504,7 @@ function IndexPopup() {
         )}
 
         <a
-          href={`${WEB_URL}/dashboard?section=extension`}
+          href={`${WEB_URL}/dashboard/extension`}
           target="_blank"
           rel="noreferrer"
           className="flex items-center justify-center gap-1.5 pt-1 text-xs text-muted-foreground transition-colors duration-200 hover:text-primary"

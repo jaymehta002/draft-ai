@@ -274,6 +274,76 @@ export function migrateLegacyToStructured(profile: {
   return { workExperiences, projects, certificates }
 }
 
+export function toCandidateProfileData(profile: {
+  fullName: string | null
+  phone: string | null
+  location: string | null
+  linkedinUrl: string | null
+  portfolioUrl: string | null
+  githubUrl: string | null
+  currentTitle: string | null
+  yearsExperience: number | null
+  summary: string | null
+  workExperience: string | null
+  workExperiences?: unknown
+  projects?: unknown
+  certificates?: unknown
+  education: string | null
+  skills: string | null
+  certifications: string | null
+  resumeFileName: string | null
+  resumeMimeType: string | null
+  resumeStorageKey: string | null
+  resumeFileUrl: string | null
+  resumeFileSize: number | null
+  resumeFileData: Uint8Array | null
+  resumeContent: string | null
+  desiredRoles: string | null
+  salaryExpectation: string | null
+  workPreference: string | null
+  availability: string | null
+  outreachTone: string | null
+  draftLength: string | null
+  outreachLanguage: string | null
+}): CandidateProfileData {
+  const structured = migrateLegacyToStructured(profile)
+  const base: CandidateProfileData = {
+    fullName: profile.fullName ?? "",
+    phone: profile.phone ?? "",
+    location: profile.location ?? "",
+    linkedinUrl: profile.linkedinUrl ?? "",
+    portfolioUrl: profile.portfolioUrl ?? "",
+    githubUrl: profile.githubUrl ?? "",
+    currentTitle: profile.currentTitle ?? "",
+    yearsExperience: profile.yearsExperience?.toString() ?? "",
+    summary: profile.summary ?? "",
+    workExperience: profile.workExperience ?? "",
+    workExperiences: structured.workExperiences,
+    projects: structured.projects,
+    certificates: structured.certificates,
+    education: profile.education ?? "",
+    skills: profile.skills ?? "",
+    certifications: profile.certifications ?? "",
+    resumeFileName: profile.resumeFileName ?? "",
+    resumeMimeType: profile.resumeMimeType ?? "",
+    resumeStorageKey: profile.resumeStorageKey ?? "",
+    resumeFileUrl: profile.resumeFileUrl ?? "",
+    resumeFileSize: profile.resumeFileSize?.toString() ?? "",
+    resumeFileData: profile.resumeFileData
+      ? Buffer.from(profile.resumeFileData).toString("base64")
+      : "",
+    resumeContent: profile.resumeContent ?? "",
+    desiredRoles: profile.desiredRoles ?? "",
+    salaryExpectation: profile.salaryExpectation ?? "",
+    workPreference: profile.workPreference ?? "",
+    availability: profile.availability ?? "",
+    outreachTone: profile.outreachTone ?? "professional",
+    draftLength: profile.draftLength ?? "medium",
+    outreachLanguage: profile.outreachLanguage ?? "en",
+  }
+  return syncLegacyFields(base)
+}
+
 export function parseCandidateFormData(formData: FormData): CandidateProfileData {
   const workExperiences = parseJsonArray<WorkExperienceEntry>(
     formData.get("workExperiences"),

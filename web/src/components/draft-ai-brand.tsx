@@ -1,6 +1,85 @@
 import Link from "next/link"
-import { Feather } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+export function DraftAIMark({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 200 240"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="pageGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#eef5ff" />
+        </linearGradient>
+        <linearGradient id="foldGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#e2d7ff" />
+          <stop offset="100%" stopColor="#b9b0ff" />
+        </linearGradient>
+        <clipPath id="foldClip">
+          <path d="M140,20 L140,54 L174,54 Z" />
+        </clipPath>
+      </defs>
+
+      {/* Document body with folded top-right corner */}
+      <path
+        d="
+          M30,20
+          H140
+          L170,50
+          V220
+          Q170,228 162,228
+          H38
+          Q30,228 30,220
+          V28
+          Q30,20 38,20
+          Z
+        "
+        fill="url(#pageGrad)"
+        stroke="#7ea8ff"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+
+      {/* Folded corner triangle */}
+      <path
+        d="M140,20 L140,54 L174,54 Z"
+        fill="url(#foldGrad)"
+        stroke="#7ea8ff"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+
+      {/* Fold dot pattern */}
+      <g clipPath="url(#foldClip)" opacity="0.95">
+        <circle cx="154" cy="30" r="3" fill="#6e63ff" opacity="0.75" />
+        <circle cx="164" cy="34" r="3" fill="#6e63ff" opacity="0.65" />
+        <circle cx="148" cy="40" r="3" fill="#6e63ff" opacity="0.6" />
+        <circle cx="158" cy="44" r="3" fill="#6e63ff" opacity="0.55" />
+        <circle cx="170" cy="42" r="3" fill="#6e63ff" opacity="0.5" />
+      </g>
+
+      {/* Text lines */}
+      <rect x="56" y="84" width="88" height="8" rx="4" fill="#7fa7ea" opacity="0.9" />
+      <rect x="56" y="106" width="104" height="8" rx="4" fill="#7fa7ea" opacity="0.9" />
+      <rect x="56" y="128" width="72" height="8" rx="4" fill="#7fa7ea" opacity="0.9" />
+
+      {/* Glare/sparkle star at the folded corner */}
+      <g transform="translate(160 28)">
+        <path
+          d="M0,-14 L3,-4 L14,0 L3,4 L0,14 L-3,4 L-14,0 L-3,-4 Z"
+          fill="#f4f8ff"
+          stroke="#6d8fff"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <circle cx="10" cy="-10" r="3" fill="#f4f8ff" stroke="#6d8fff" strokeWidth="2" />
+      </g>
+    </svg>
+  )
+}
 
 export function DraftAILogo({
   className,
@@ -28,7 +107,7 @@ export function DraftAILogo({
         className
       )}
     >
-      <Feather className={iconSizes[size]} strokeWidth={1.75} />
+      <DraftAIMark className={iconSizes[size]} />
     </span>
   )
 }

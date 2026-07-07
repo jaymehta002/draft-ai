@@ -51,6 +51,39 @@ export function buildStepQueue(
   return steps
 }
 
+const QUICK_ESSENTIAL_FIELDS: (keyof CandidateProfileData)[] = [
+  "fullName",
+  "currentTitle",
+  "yearsExperience",
+]
+
+/** Compressed onboarding for try-first activation — defers work/projects/certs */
+export function buildQuickStepQueue(
+  profile: CandidateProfileData,
+  aiFilledFields: Set<keyof CandidateProfileData>,
+  options: { includeReveal: boolean }
+): StepId[] {
+  const steps: StepId[] = []
+
+  if (options.includeReveal) {
+    steps.push("reveal")
+  }
+
+  for (const field of QUICK_ESSENTIAL_FIELDS) {
+    const value = String(profile[field] ?? "").trim()
+    if (!value || aiFilledFields.has(field)) {
+      steps.push({ type: "question", field })
+    }
+  }
+
+  if (!profile.skills.trim()) {
+    steps.push("skills")
+  }
+
+  steps.push("tone", "preview-draft", "whats-next")
+  return steps
+}
+
 export function stepKey(step: StepId): string {
   if (typeof step === "string") return step
   return `question:${step.field}`

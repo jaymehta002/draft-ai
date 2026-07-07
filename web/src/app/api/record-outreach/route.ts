@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server"
+import { authenticateBearerRequest } from "@/lib/bearer-auth"
 import { prisma } from "@/lib/prisma"
 import { incrementSentStats } from "@/lib/user-stats"
+import { recordActivity } from "@/lib/engagement"
 import { resolveOutreachSendFields } from "@/lib/resolve-send-metadata"
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization")
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const token = authHeader.split(" ")[1]
-    const apiKey = await prisma.apiKey.findUnique({
-      where: { key: token },
+    const auth = await authenticateBearerRequest(req, {
+      limit: 30,
+      windowMs: 60 * 60 * 1000,
     })
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "Invalid API Key" }, { status: 401 })
-    }
+    if (auth.error) return auth.error
+    const apiKey = auth.apiKey!
 
     const {
       postId,
@@ -60,6 +55,7 @@ export async function POST(req: Request) {
     })
 
     await incrementSentStats(apiKey.userId)
+    await recordActivity(apiKey.userId, "send")
 
     return NextResponse.json({ success: true, sentId: sent.id })
   } catch (error: unknown) {

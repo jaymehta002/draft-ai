@@ -1,16 +1,27 @@
-import { DRAFT_STORAGE_KEY, type DraftPreview } from "./draft"
+import {
+  getActivePostId,
+  getDraftForPost,
+  setDraftForPost,
+  type DraftPreview,
+} from "./draft"
 
-export async function getDraft(): Promise<DraftPreview | null> {
-  const result = await chrome.storage.local.get(DRAFT_STORAGE_KEY)
-  return (result[DRAFT_STORAGE_KEY] as DraftPreview | undefined) ?? null
+export async function getDraft(postId?: string): Promise<DraftPreview | null> {
+  if (postId) return getDraftForPost(postId)
+  const activePostId = await getActivePostId()
+  if (!activePostId) return null
+  return getDraftForPost(activePostId)
 }
 
 export async function persistDraftEdits(
   message: string,
   subject?: string,
-  recipientEmail?: string | null
+  recipientEmail?: string | null,
+  postId?: string
 ): Promise<DraftPreview | null> {
-  const current = await getDraft()
+  const resolvedPostId = postId ?? (await getActivePostId())
+  if (!resolvedPostId) return null
+
+  const current = await getDraftForPost(resolvedPostId)
   if (!current || current.status === "loading" || current.status === "idle") {
     return null
   }
@@ -36,6 +47,6 @@ export async function persistDraftEdits(
     updatedAt: Date.now(),
   }
 
-  await chrome.storage.local.set({ [DRAFT_STORAGE_KEY]: updated })
+  await setDraftForPost(resolvedPostId, updated)
   return updated
 }

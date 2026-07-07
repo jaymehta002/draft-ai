@@ -3,15 +3,14 @@
 import { prisma } from "@/lib/prisma"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
-import { ensureUserApiKey } from "@/lib/api-key"
-import { randomBytes } from "crypto"
+import { createUserApiKey } from "@/lib/api-key"
 import {
   formatOnboardingValidationError,
   getOnboardingValidationIssues,
   isOnboardingComplete,
   parseCandidateFormData,
-  migrateLegacyToStructured,
   syncLegacyFields,
+  toCandidateProfileData,
   type CandidateProfileData,
 } from "@/lib/candidate-profile"
 import {
@@ -21,6 +20,7 @@ import {
   formatGmailAuthError,
 } from "@/lib/gmail-scopes"
 import { getEmailLifecycleState, getOutreachLifecycleState } from "@/lib/outreach-state"
+import { getPipelineColumnForOutreach, isFollowUpEligible } from "@/lib/pipeline"
 import { resolvePostUrl } from "@/lib/post-url"
 import { utapi } from "@/lib/uploadthing-server"
 
@@ -32,74 +32,6 @@ async function getAuthenticatedUser() {
   if (!user) throw new Error("User not found")
 
   return user
-}
-
-function toCandidateProfileData(profile: {
-  fullName: string | null
-  phone: string | null
-  location: string | null
-  linkedinUrl: string | null
-  portfolioUrl: string | null
-  githubUrl: string | null
-  currentTitle: string | null
-  yearsExperience: number | null
-  summary: string | null
-  workExperience: string | null
-  workExperiences?: unknown
-  projects?: unknown
-  certificates?: unknown
-  education: string | null
-  skills: string | null
-  certifications: string | null
-  resumeFileName: string | null
-  resumeMimeType: string | null
-  resumeStorageKey: string | null
-  resumeFileUrl: string | null
-  resumeFileSize: number | null
-  resumeFileData: Uint8Array | null
-  resumeContent: string | null
-  desiredRoles: string | null
-  salaryExpectation: string | null
-  workPreference: string | null
-  availability: string | null
-  outreachTone: string | null
-  draftLength: string | null
-  outreachLanguage: string | null
-}): CandidateProfileData {
-  const structured = migrateLegacyToStructured(profile)
-  const base: CandidateProfileData = {
-    fullName: profile.fullName ?? "",
-    phone: profile.phone ?? "",
-    location: profile.location ?? "",
-    linkedinUrl: profile.linkedinUrl ?? "",
-    portfolioUrl: profile.portfolioUrl ?? "",
-    githubUrl: profile.githubUrl ?? "",
-    currentTitle: profile.currentTitle ?? "",
-    yearsExperience: profile.yearsExperience?.toString() ?? "",
-    summary: profile.summary ?? "",
-    workExperience: profile.workExperience ?? "",
-    workExperiences: structured.workExperiences,
-    projects: structured.projects,
-    certificates: structured.certificates,
-    education: profile.education ?? "",
-    skills: profile.skills ?? "",
-    certifications: profile.certifications ?? "",
-    resumeFileName: profile.resumeFileName ?? "",
-    resumeMimeType: profile.resumeMimeType ?? "",
-    resumeStorageKey: profile.resumeStorageKey ?? "",
-    resumeFileUrl: profile.resumeFileUrl ?? "",
-    resumeFileSize: profile.resumeFileSize?.toString() ?? "",
-    resumeFileData: profile.resumeFileData ? Buffer.from(profile.resumeFileData).toString("base64") : "",
-    resumeContent: profile.resumeContent ?? "",
-    desiredRoles: profile.desiredRoles ?? "",
-    salaryExpectation: profile.salaryExpectation ?? "",
-    workPreference: profile.workPreference ?? "",
-    availability: profile.availability ?? "",
-    outreachTone: profile.outreachTone ?? "professional",
-    draftLength: profile.draftLength ?? "medium",
-    outreachLanguage: profile.outreachLanguage ?? "en",
-  }
-  return syncLegacyFields(base)
 }
 
 export async function saveCandidateProfile(formData: FormData, completeOnboarding = false) {
@@ -203,7 +135,7 @@ export async function saveOutreachPreferences(prefs: {
 export async function getIntegrationStatus() {
   const user = await getAuthenticatedUser()
 
-  const [account, mailboxSync, draftCount] = await Promise.all([
+  const [account, mailboxSync, draftCount, apiKeyRecord, userRecord] = await Promise.all([
     prisma.account.findFirst({
       where: { userId: user.id, provider: "google" },
       select: { scope: true, refresh_token: true },
@@ -213,7 +145,22 @@ export async function getIntegrationStatus() {
       select: { syncError: true },
     }),
     prisma.postDraft.count({ where: { userId: user.id } }),
+    prisma.apiKey.findFirst({
+      where: { userId: user.id },
+      select: { id: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: user.id },
+      select: { extensionLastSeenAt: true },
+    }),
   ])
+
+  const extensionLastSeenAt = userRecord?.extensionLastSeenAt ?? null
+  const extensionKeyIssued = Boolean(apiKeyRecord)
+  const extensionActiveThreshold = Date.now() - 15 * 60 * 1000
+  const extensionConnected = Boolean(
+    extensionLastSeenAt && extensionLastSeenAt.getTime() > extensionActiveThreshold
+  )
 
   const hasGmailSend = accountHasGmailSend(account?.scope)
   const hasGmailReadonly = accountHasGmailReadonly(account?.scope)
@@ -226,6 +173,9 @@ export async function getIntegrationStatus() {
     (!hasRefreshToken || Boolean(mailboxSync?.syncError) || gmailMissingReadonly)
 
   return {
+    extensionKeyIssued,
+    extensionConnected,
+    extensionLastSeenAt: extensionLastSeenAt?.toISOString() ?? null,
     gmailConnected,
     gmailNeedsReconnect,
     gmailNotEnabled: !hasGmailSend && !hasGmailReadonly,
@@ -255,19 +205,7 @@ export async function saveHiringProfile(formData: FormData) {
 
 export async function generateApiKey() {
   const user = await getAuthenticatedUser()
-
-  const key = "rp_" + randomBytes(32).toString("hex")
-
-  await prisma.apiKey.deleteMany({ where: { userId: user.id } })
-
-  await prisma.apiKey.create({
-    data: {
-      key,
-      userId: user.id
-    }
-  })
-
-  return key
+  return createUserApiKey(user.id)
 }
 
 function mapDraftRecord(draft: {
@@ -451,8 +389,123 @@ export async function getDMsData() {
   return { dms: dms.map(mapOutreachRecord) }
 }
 
+export async function getPipelineData() {
+  const user = await getAuthenticatedUser()
+
+  const [drafts, outreach] = await Promise.all([
+    prisma.postDraft.findMany({
+      where: { userId: user.id, sentOutreach: null },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+    }),
+    prisma.sentOutreach.findMany({
+      where: { userId: user.id },
+      orderBy: { sentAt: "desc" },
+      take: 200,
+      include: {
+        postDraft: { select: { postText: true } },
+        conversationMeta: true,
+      },
+    }),
+  ])
+
+  const drafted = drafts.map((d) => ({
+    id: d.id,
+    type: "draft" as const,
+    column: "drafted" as const,
+    recipientName: d.recipientName,
+    recipientEmail: d.recipientEmail,
+    platform: d.platform,
+    actionMode: d.actionMode,
+    message: d.message,
+    postUrl: resolvePostUrl(d.postUrl, d.postId),
+    matchScore: null as number | null,
+    toneUsed: null as string | null,
+    sentAt: null as string | null,
+    responseReceivedAt: null as string | null,
+    followUpEligible: false,
+    followUpType: null as "bump" | "close" | null,
+    conversationMeta: null,
+  }))
+
+  const outreachItems = outreach.map((s) => {
+    const column = getPipelineColumnForOutreach(s.sentAt, s.responseReceivedAt)
+    const followUp = isFollowUpEligible(s.sentAt, s.responseReceivedAt)
+    return {
+      id: s.id,
+      type: "outreach" as const,
+      column,
+      recipientName: s.recipientName,
+      recipientEmail: s.recipientEmail,
+      platform: s.platform,
+      actionMode: s.actionMode,
+      message: s.message,
+      postUrl: resolvePostUrl(s.postUrl, s.postId),
+      matchScore: s.matchScore,
+      toneUsed: s.toneUsed,
+      sentAt: s.sentAt.toISOString(),
+      responseReceivedAt: s.responseReceivedAt?.toISOString() ?? null,
+      followUpEligible: followUp.eligible,
+      followUpType: followUp.followUpType,
+      conversationMeta: s.conversationMeta
+        ? {
+            company: s.conversationMeta.company,
+            roleTitle: s.conversationMeta.roleTitle,
+            pipelineStage: s.conversationMeta.pipelineStage,
+            notes: s.conversationMeta.notes,
+          }
+        : null,
+    }
+  })
+
+  const all = [...drafted, ...outreachItems]
+  const columns = {
+    drafted: all.filter((i) => i.column === "drafted"),
+    sent: all.filter((i) => i.column === "sent"),
+    awaiting: all.filter((i) => i.column === "awaiting"),
+    replied: all.filter((i) => i.column === "replied"),
+  }
+
+  return { columns, total: all.length }
+}
+
+export async function getRecentReplies() {
+  const user = await getAuthenticatedUser()
+
+  const replies = await prisma.sentOutreach.findMany({
+    where: { userId: user.id, responseReceivedAt: { not: null } },
+    orderBy: { responseReceivedAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      recipientName: true,
+      recipientHandle: true,
+      platform: true,
+      actionMode: true,
+      message: true,
+      responseReceivedAt: true,
+      postUrl: true,
+      postId: true,
+    },
+  })
+
+  return replies.map((r) => ({
+    id: r.id,
+    recipientName: r.recipientName || r.recipientHandle || "Someone",
+    platform: r.platform,
+    actionMode: r.actionMode,
+    excerpt: r.message.slice(0, 120),
+    responseReceivedAt: r.responseReceivedAt!.toISOString(),
+    postUrl: resolvePostUrl(r.postUrl, r.postId),
+  }))
+}
+
 export async function markEmailResponded(outreachId: string) {
   const user = await getAuthenticatedUser()
+
+  const outreach = await prisma.sentOutreach.findFirst({
+    where: { id: outreachId, userId: user.id, actionMode: "EMAIL", responseReceivedAt: null },
+  })
 
   const updated = await prisma.sentOutreach.updateMany({
     where: { id: outreachId, userId: user.id, actionMode: "EMAIL", responseReceivedAt: null },
@@ -461,12 +514,25 @@ export async function markEmailResponded(outreachId: string) {
 
   if (updated.count > 0) {
     const { incrementReplyStats } = await import("@/lib/user-stats")
+    const { recordActivity } = await import("@/lib/engagement")
     await incrementReplyStats(user.id)
+    if (outreach) {
+      await recordActivity(user.id, "reply", {
+        outreachId,
+        recipientName: outreach.recipientName,
+        messageExcerpt: outreach.message.slice(0, 200),
+        actionMode: "EMAIL",
+      })
+    }
   }
 }
 
 export async function markDMResponded(outreachId: string) {
   const user = await getAuthenticatedUser()
+
+  const outreach = await prisma.sentOutreach.findFirst({
+    where: { id: outreachId, userId: user.id, actionMode: "DM", responseReceivedAt: null },
+  })
 
   const updated = await prisma.sentOutreach.updateMany({
     where: { id: outreachId, userId: user.id, actionMode: "DM", responseReceivedAt: null },
@@ -475,7 +541,16 @@ export async function markDMResponded(outreachId: string) {
 
   if (updated.count > 0) {
     const { incrementReplyStats } = await import("@/lib/user-stats")
+    const { recordActivity } = await import("@/lib/engagement")
     await incrementReplyStats(user.id)
+    if (outreach) {
+      await recordActivity(user.id, "reply", {
+        outreachId,
+        recipientName: outreach.recipientName,
+        messageExcerpt: outreach.message.slice(0, 200),
+        actionMode: "DM",
+      })
+    }
   }
 }
 
@@ -574,13 +649,16 @@ export async function getAnalyticsData() {
 }
 
 export async function getWinningTemplates(industryTag?: string | null) {
+  const user = await getAuthenticatedUser()
+
   const templates = await prisma.winningTemplate.findMany({
     where: {
       isPublished: true,
+      OR: [{ userId: user.id }, { userId: null }],
       ...(industryTag ? { industryTag } : {}),
     },
     orderBy: { createdAt: "desc" },
-    take: 5,
+    take: 10,
   })
 
   return templates.map((t) => ({
@@ -589,6 +667,25 @@ export async function getWinningTemplates(industryTag?: string | null) {
     toneUsed: t.toneUsed,
     excerpt: t.excerpt,
     matchScore: t.matchScore,
+  }))
+}
+
+export async function getUserWinningTemplates() {
+  const user = await getAuthenticatedUser()
+
+  const templates = await prisma.winningTemplate.findMany({
+    where: { userId: user.id, isPublished: true },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  })
+
+  return templates.map((t) => ({
+    id: t.id,
+    industryTag: t.industryTag,
+    toneUsed: t.toneUsed,
+    excerpt: t.excerpt,
+    matchScore: t.matchScore,
+    createdAt: t.createdAt.toISOString(),
   }))
 }
 
@@ -610,17 +707,18 @@ export async function syncWinningTemplatesFromReplies() {
     if (!excerpt) continue
 
     const existing = await prisma.winningTemplate.findFirst({
-      where: { excerpt, toneUsed: w.toneUsed },
+      where: { excerpt, toneUsed: w.toneUsed, userId: user.id },
     })
     if (existing) continue
 
     await prisma.winningTemplate.create({
       data: {
+        userId: user.id,
         industryTag: w.industryTag,
         toneUsed: w.toneUsed,
         excerpt,
         matchScore: w.matchScore,
-        isPublished: false,
+        isPublished: true,
       },
     })
   }
@@ -648,9 +746,28 @@ export async function getDashboardData() {
       ? toCandidateProfileData(user.candidateProfile)
       : null,
     hiringProfile: user.hiringProfile,
-    apiKey: user.apiKeys[0]?.key || null,
+    apiKey: user.apiKeys[0]?.keyPrefix ? `${user.apiKeys[0].keyPrefix}••••••••` : null,
+    apiKeyIssued: user.apiKeys.length > 0,
     onboardingComplete: user.candidateProfile?.onboardingComplete ?? false,
   }
+}
+
+export async function getDashboardNavCounts() {
+  const user = await getAuthenticatedUser()
+
+  const [drafts, emails, dms] = await Promise.all([
+    prisma.postDraft.count({
+      where: { userId: user.id, sentOutreach: null },
+    }),
+    prisma.sentOutreach.count({
+      where: { userId: user.id, actionMode: "EMAIL" },
+    }),
+    prisma.sentOutreach.count({
+      where: { userId: user.id, actionMode: "DM" },
+    }),
+  ])
+
+  return { drafts, emails, dms }
 }
 
 export async function getOnboardingData() {
@@ -692,7 +809,7 @@ export async function connectExtension(state: string) {
     throw new Error("Complete your profile onboarding before connecting the extension")
   }
 
-  const apiKey = await ensureUserApiKey(session.user.id)
+  const apiKey = await createUserApiKey(session.user.id)
 
   return {
     state,

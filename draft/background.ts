@@ -12,8 +12,15 @@ import {
   saveAuthState,
   verifyAuthState,
 } from "~lib/auth"
-import { DRAFT_STORAGE_KEY, type DraftPreview } from "~lib/draft"
+import { migrateLegacyDraft, setDraftForPost, type DraftPreview } from "~lib/draft"
+import { captureExtensionError } from "~lib/sentry"
 import { markPostSent, mergeSentPosts, getSentPosts } from "~lib/sent-posts"
+import {
+  enqueueOfflineAction,
+  getOfflineQueue,
+  isRetryableFetchError,
+  shiftOfflineQueue,
+} from "~lib/offline-queue"
 
 async function syncSentPosts() {
   try {
@@ -35,14 +42,42 @@ async function syncSentPosts() {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  verifyAuthState().then(() => syncSentPosts())
+  migrateLegacyDraft()
+  verifyAuthState().then(() => {
+    syncSentPosts()
+    sendHeartbeat()
+    pollEngagementAnalytics()
+    processOfflineQueue()
+  })
   setupSidePanel()
+  setupOfflineAlarm()
 })
 
 chrome.runtime.onStartup.addListener(() => {
-  verifyAuthState().then(() => syncSentPosts())
+  migrateLegacyDraft()
+  verifyAuthState().then(() => {
+    syncSentPosts()
+    sendHeartbeat()
+    pollEngagementAnalytics()
+    processOfflineQueue()
+  })
   setupSidePanel()
+  setupOfflineAlarm()
 })
+
+function setupOfflineAlarm() {
+  if (typeof chrome === "undefined" || !chrome.alarms?.create) return
+  chrome.alarms.create("offline-queue-retry", { periodInMinutes: 5 })
+}
+
+if (typeof chrome !== "undefined" && chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "offline-queue-retry") {
+      processOfflineQueue()
+      pollEngagementAnalytics()
+    }
+  })
+}
 
 function setupSidePanel() {
   if (typeof chrome === "undefined" || !chrome.sidePanel?.setPanelBehavior) return
@@ -55,6 +90,7 @@ async function openSidePanelForTab(tabId?: number) {
     await chrome.sidePanel.open({ tabId })
   } catch (error) {
     console.error("Failed to open side panel:", error)
+    captureExtensionError(error, "openSidePanel")
   }
 }
 
@@ -136,6 +172,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === "SEND_HEARTBEAT") {
+    sendHeartbeat()
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ success: false, error: error.message }))
+    return true
+  }
+
   if (message.type === "GENERATE_VARIANT") {
     handleGenerateVariant(message.payload)
       .then(sendResponse)
@@ -159,10 +202,74 @@ async function getApiKey() {
   return auth.apiKey
 }
 
+async function sendHeartbeat() {
+  try {
+    const apiKey = await getApiKey()
+    await fetch(`${API_BASE_URL}/api/extension/heartbeat`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    await pollEngagementAnalytics()
+  } catch {
+    // Non-fatal
+  }
+}
+
+async function pollEngagementAnalytics() {
+  try {
+    const apiKey = await getApiKey()
+    const response = await fetch(`${API_BASE_URL}/api/extension/analytics`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (!response.ok) return
+
+    const data = await response.json()
+    const stored = await chrome.storage.local.get(["lastKnownReplied", "pendingCelebrations"])
+    const lastKnown = (stored.lastKnownReplied as number) ?? 0
+    const totalReplied = data.totalReplied ?? 0
+
+    if (totalReplied > lastKnown) {
+      await chrome.storage.local.set({ lastKnownReplied: totalReplied })
+      if (typeof chrome.action?.setBadgeText === "function") {
+        await chrome.action.setBadgeText({ text: "🎉" })
+        await chrome.action.setBadgeBackgroundColor({ color: "#16a34a" })
+        setTimeout(() => {
+          getOfflineQueue().then((q) => {
+            if (q.length === 0) chrome.action.setBadgeText({ text: "" })
+          })
+        }, 8000)
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+}
+
+async function processOfflineQueue() {
+  const item = await shiftOfflineQueue()
+  if (!item) return
+
+  try {
+    if (item.type === "send-email") {
+      await handleSendEmail(item.payload)
+    } else if (item.type === "record-outreach" || item.type === "mark-copied") {
+      await handleRecordOutreach(item.payload)
+    }
+  } catch {
+    await enqueueOfflineAction({ type: item.type, payload: item.payload })
+  }
+
+  const remaining = await getOfflineQueue()
+  if (remaining.length > 0) {
+    setTimeout(() => processOfflineQueue(), 1000)
+  }
+}
+
 async function setDraftPreview(draft: DraftPreview) {
-  await chrome.storage.local.set({
-    [DRAFT_STORAGE_KEY]: { ...draft, updatedAt: Date.now() },
-  })
+  if (!draft.postId) {
+    throw new Error("Draft must have a postId")
+  }
+  await setDraftForPost(draft.postId, draft)
 }
 
 async function handleDraftPitchFlow(payload: {
@@ -283,6 +390,7 @@ async function handleSaveAuth(payload: {
   })
 
   await syncSentPosts()
+  await sendHeartbeat()
 
   return { success: true }
 }
@@ -362,6 +470,10 @@ async function handleRecordOutreach(payload: unknown) {
     }
 
     if (!response.ok) {
+      if (isRetryableFetchError(null, response)) {
+        await enqueueOfflineAction({ type: "record-outreach", payload })
+        return { success: false, error: "Queued for retry when back online", queued: true }
+      }
       throw new Error(data.error || "Failed to record outreach")
     }
 
@@ -372,6 +484,10 @@ async function handleRecordOutreach(payload: unknown) {
 
     return { success: true, sentId: data.sentId }
   } catch (error: unknown) {
+    if (isRetryableFetchError(error)) {
+      await enqueueOfflineAction({ type: "record-outreach", payload })
+      return { success: false, error: "Queued for retry when back online", queued: true }
+    }
     const message = error instanceof Error ? error.message : "Failed to record outreach"
     console.error("Error recording outreach:", error)
     return { success: false, error: message }
@@ -399,6 +515,10 @@ async function handleSendEmail(payload: unknown) {
     }
 
     if (!response.ok) {
+      if (isRetryableFetchError(null, response)) {
+        await enqueueOfflineAction({ type: "send-email", payload })
+        return { success: false, error: "Queued for retry when back online", queued: true }
+      }
       throw new Error(data.error || "Failed to send email")
     }
 
@@ -409,6 +529,10 @@ async function handleSendEmail(payload: unknown) {
 
     return { success: true }
   } catch (error: unknown) {
+    if (isRetryableFetchError(error)) {
+      await enqueueOfflineAction({ type: "send-email", payload })
+      return { success: false, error: "Queued for retry when back online", queued: true }
+    }
     const message = error instanceof Error ? error.message : "Failed to send email"
     console.error("Error sending email:", error)
     return { success: false, error: message }

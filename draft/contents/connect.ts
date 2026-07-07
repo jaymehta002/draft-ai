@@ -1,18 +1,32 @@
 import type { PlasmoCSConfig } from "plasmo"
-import { AUTH_MESSAGE_TYPE } from "~lib/config"
+import { AUTH_MESSAGE_TYPE, WEB_URL } from "~lib/config"
 import {
   isExtensionContextValid,
   sendRuntimeMessage,
   showContextInvalidBanner,
 } from "~lib/extension-context"
 
-export const config: PlasmoCSConfig = {
-  matches: [
+function buildConnectMatches(): string[] {
+  const matches = [
     "http://localhost:3000/extension/connect*",
     "http://127.0.0.1:3000/extension/connect*",
-    "https://draft-ai-ashen.vercel.app/extension/connect*",
-    "https://*.vercel.app/extension/connect*"
-  ],
+  ]
+
+  try {
+    const url = new URL(WEB_URL)
+    const origin = url.origin
+    if (!matches.some((m) => m.startsWith(origin))) {
+      matches.push(`${origin}/extension/connect*`)
+    }
+  } catch {
+    // WEB_URL invalid — localhost defaults above are enough for dev
+  }
+
+  return matches
+}
+
+export const config: PlasmoCSConfig = {
+  matches: buildConnectMatches(),
   run_at: "document_start",
 }
 

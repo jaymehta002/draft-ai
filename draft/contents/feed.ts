@@ -1,6 +1,6 @@
 import type { PlasmoCSConfig } from "plasmo"
 import { AUTH_STORAGE_KEYS } from "~lib/config"
-import { DRAFT_STORAGE_KEY, type DraftPreview } from "~lib/draft"
+import { getDraftForPost, setDraftForPost, type DraftPreview } from "~lib/draft"
 import { persistDraftEdits } from "~lib/draft-sync"
 import {
   dedupeInnermostPosts,
@@ -636,13 +636,13 @@ const getPopoverDraftValues = (popover: HTMLElement) => ({
   message: (popover.querySelector('[data-field="message"]') as HTMLTextAreaElement)?.value ?? "",
 })
 
-const bindPopoverEditing = (popover: HTMLElement) => {
+const bindPopoverEditing = (popover: HTMLElement, postId?: string) => {
   popover.querySelectorAll("[data-field]").forEach((el) => {
     el.addEventListener("input", () => {
       if (popoverPersistTimer) clearTimeout(popoverPersistTimer)
       popoverPersistTimer = setTimeout(() => {
         const { message, subject } = getPopoverDraftValues(popover)
-        persistDraftEdits(message, subject)
+        persistDraftEdits(message, subject, undefined, postId)
       }, 400)
     })
   })
@@ -680,7 +680,7 @@ const renderPopoverReady = (popover: HTMLElement, draft: DraftPreview) => {
     </div>
   `
 
-  bindPopoverEditing(popover)
+  bindPopoverEditing(popover, draft.postId)
 }
 
 const bindReadyPopoverActions = (
@@ -694,7 +694,7 @@ const bindReadyPopoverActions = (
 
   bindAction(popover.querySelector('[data-action="panel"]'), async () => {
     const { message, subject } = getPopoverDraftValues(popover)
-    await persistDraftEdits(message, subject)
+    await persistDraftEdits(message, subject, undefined, draft.postId)
     const opened = await sendRuntimeMessage({ type: "OPEN_SIDE_PANEL" })
     if (opened === null) {
       renderPopoverError(popover, CONTEXT_INVALID_MSG)
@@ -706,7 +706,7 @@ const bindReadyPopoverActions = (
   bindAction(popover.querySelector('[data-action="primary"]'), async () => {
     const primaryBtn = popover.querySelector('[data-action="primary"]') as HTMLButtonElement
     const { message, subject } = getPopoverDraftValues(popover)
-    await persistDraftEdits(message, subject)
+    await persistDraftEdits(message, subject, undefined, draft.postId)
 
     if (!isEmail) {
       await navigator.clipboard.writeText(message)
@@ -779,9 +779,15 @@ const bindReadyPopoverActions = (
     `
     bindAction(popover.querySelector(".rp-popover__close"), closePopover)
 
-    await setLocalStorage({
-      [DRAFT_STORAGE_KEY]: { ...draft, status: "sent", message, subject, updatedAt: Date.now() },
-    })
+    if (draft.postId) {
+      await setDraftForPost(draft.postId, {
+        ...draft,
+        status: "sent",
+        message,
+        subject,
+        updatedAt: Date.now(),
+      })
+    }
   })
 }
 
@@ -1012,8 +1018,9 @@ const injectButton = async (post: HTMLElement, platform: PlatformConfig) => {
     if (button.dataset.postSent === "true") return
 
     if (button.dataset.draftReady === "true") {
-      const stored = await getLocalStorage<Record<string, DraftPreview>>(DRAFT_STORAGE_KEY)
-      const draft = stored?.[DRAFT_STORAGE_KEY]
+      const postId = button.dataset.draftAiPostId
+      if (!postId) return
+      const draft = await getDraftForPost(postId)
       if (draft?.message) {
         showReadyPopover(button, draft, button)
       }

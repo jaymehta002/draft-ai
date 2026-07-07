@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import {
   Gauge,
   PenLine,
@@ -8,20 +9,25 @@ import {
   MessageCircle,
   CircleUserRound,
   Blocks,
-  Feather,
   ChevronsLeft,
   PanelLeftOpen,
   X,
+  LayoutGrid,
+  BookOpen,
   FeatherIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { dashboardPathForSection } from "@/lib/dashboard-routes"
+import { DraftAIMark } from "@/components/draft-ai-brand"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export type DashboardSection =
   | "analytics"
+  | "pipeline"
   | "drafts"
+  | "templates"
   | "emails"
   | "dms"
   | "profile"
@@ -35,8 +41,10 @@ const NAV_ITEMS: {
   featured?: boolean
 }[] = [
     { id: "analytics", label: "Overview", icon: Gauge, description: "Dashboard analytics" },
-    { id: "emails", label: "Inbox", icon: Inbox, description: "Email pipeline" },
+    { id: "pipeline", label: "Pipeline", icon: LayoutGrid, description: "Conversation pipeline" },
     { id: "drafts", label: "Drafts", icon: FeatherIcon, description: "Pending outreach" },
+    { id: "templates", label: "Templates", icon: BookOpen, description: "Winning messages" },
+    { id: "emails", label: "Inbox", icon: Inbox, description: "Email pipeline" },
     { id: "dms", label: "Messages", icon: MessageCircle, description: "Direct messages" },
     { id: "profile", label: "Account", icon: CircleUserRound, description: "Your profile" },
     { id: "extension", label: "Integrations", icon: Blocks, description: "Connect apps" },
@@ -79,10 +87,10 @@ function Wordmark({ collapsed }: { collapsed: boolean }) {
       style={{ transitionTimingFunction: EASE }}
     >
       <div
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all duration-300"
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-primary transition-all duration-300"
         style={{ transitionTimingFunction: EASE }}
       >
-        <Feather className="size-4" strokeWidth={1.75} />
+        <DraftAIMark className="size-8" />
       </div>
       <div
         className={cn(
@@ -179,9 +187,8 @@ function SidebarFooter({
       )}
       style={{ transitionTimingFunction: EASE }}
     >
-      <button
-        type="button"
-        onClick={() => onNavigate("profile")}
+      <Link
+        href="/dashboard/profile"
         className={cn(
           "group/footer flex w-full items-center rounded-lg p-2 transition-[background-color,transform] duration-200 hover:bg-sidebar-accent/70 active:scale-[0.98] active:duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
           collapsed ? "justify-center gap-0" : "gap-3"
@@ -208,7 +215,7 @@ function SidebarFooter({
             {user?.title || user?.email || "Manage profile"}
           </p>
         </div>
-      </button>
+      </Link>
     </div>
   )
 }
@@ -256,12 +263,9 @@ function NavContent({
                 style={{ transitionTimingFunction: EASE }}
               />
 
-              <button
-                type="button"
-                onClick={() => {
-                  onNavigate(id)
-                  onMobileClose()
-                }}
+              <Link
+                href={dashboardPathForSection(id)}
+                onClick={() => onMobileClose()}
                 title={collapsed ? label : undefined}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
@@ -312,7 +316,7 @@ function NavContent({
                 {!collapsed && count != null && count > 0 && (
                   <NavBadge count={count} isActive={isActive} highlight={isInbox} />
                 )}
-              </button>
+              </Link>
 
               {/* Tooltip for collapsed state */}
               {collapsed && (

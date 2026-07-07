@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { validateApiKey } from "@/lib/api-key"
 import { getUserStats } from "@/lib/user-stats"
 import { getUserReplyMetrics } from "@/lib/reply-metrics"
+import { getEngagement } from "@/lib/engagement"
 
 export async function GET(req: Request) {
   try {
@@ -17,9 +18,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid API key" }, { status: 401 })
     }
 
-    const [stats, replyMetrics] = await Promise.all([
+    const [stats, replyMetrics, engagement] = await Promise.all([
       getUserStats(apiKey.userId),
       getUserReplyMetrics(apiKey.userId),
+      getEngagement(apiKey.userId),
     ])
 
     return NextResponse.json({
@@ -28,6 +30,12 @@ export async function GET(req: Request) {
       repliedThisWeek: replyMetrics.repliedThisWeek,
       replyRate: replyMetrics.replyRate,
       replyRate7d: replyMetrics.replyRate7d,
+      currentStreak: engagement.currentStreak,
+      longestStreak: engagement.longestStreak,
+      weeklyGoal: engagement.weeklyGoal,
+      weekProgress: engagement.weekProgress,
+      milestones: engagement.milestones,
+      pendingCelebrations: engagement.pendingCelebrations.length,
     })
   } catch (error) {
     console.error("Extension analytics error:", error)

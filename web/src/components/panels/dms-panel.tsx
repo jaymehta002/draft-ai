@@ -20,19 +20,11 @@ import { PostLink } from "@/components/post-link"
 import { RecipientProfile } from "@/components/recipient-profile"
 import { filterBySearch, sortByField } from "@/lib/panel-filters"
 import { EMAIL_STATE_LABELS, type EmailLifecycleState } from "@/lib/outreach-state"
+import { formatDateTime } from "@/lib/format-date"
 import { cn } from "@/lib/utils"
 import type { getDMsData } from "@/app/actions"
 
 type DMItem = Awaited<ReturnType<typeof getDMsData>>["dms"][number]
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
 
 function formatRelative(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -43,7 +35,7 @@ function formatRelative(iso: string) {
   const days = Math.floor(hrs / 24)
   if (days === 1) return "Yesterday"
   if (days < 7) return `${days}d ago`
-  return formatDate(iso)
+  return formatDateTime(iso)
 }
 
 function getInitial(name?: string | null) {
@@ -225,7 +217,7 @@ function DMDetailView({
               <div className="max-w-[85%] rounded-xl rounded-tr-sm bg-primary text-primary-foreground p-4">
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{dm.message}</p>
                 <p className="mt-2 text-[10px] text-primary-foreground/60 text-right">
-                  {formatDate(dm.sentAt)}
+                  {formatDateTime(dm.sentAt)}
                 </p>
               </div>
             </div>
@@ -235,12 +227,12 @@ function DMDetailView({
           <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
             <span className="flex items-center gap-1">
               <Clock className="size-3" />
-              Copied {formatDate(dm.sentAt)}
+              Copied {formatDateTime(dm.sentAt)}
             </span>
             {dm.responseReceivedAt && (
               <span className="flex items-center gap-1 text-primary">
                 <CheckCircle2 className="size-3" />
-                Replied {formatDate(dm.responseReceivedAt)}
+                Replied {formatDateTime(dm.responseReceivedAt)}
               </span>
             )}
           </div>

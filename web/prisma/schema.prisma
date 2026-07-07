@@ -17,12 +17,16 @@ model User {
   hiringProfile    HiringProfile?
   candidateProfile CandidateProfile?
   apiKeys          ApiKey[]
+  connectTokens    ConnectToken[]
   postDrafts       PostDraft[]
   sentOutreach     SentOutreach[]
   stats            UserStats?
   emailThreads     EmailThread[]
   emailMessages    EmailMessage[]
   mailboxSync      MailboxSync?
+  extensionLastSeenAt DateTime?
+  engagement       UserEngagement?
+  milestones       UserMilestone[]
 }
 
 model Account {
@@ -76,11 +80,25 @@ model HiringProfile {
 
 model ApiKey {
   id        String   @id @default(cuid())
-  key       String   @unique
+  keyHash   String   @unique
+  keyPrefix String
   userId    String
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ConnectToken {
+  id        String    @id @default(cuid())
+  state     String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model CandidateProfile {
@@ -201,7 +219,8 @@ model SentOutreach {
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   postDraft   PostDraft?    @relation(fields: [postDraftId], references: [id], onDelete: SetNull)
   variant     DraftVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  emailThread EmailThread?
+  emailThread      EmailThread?
+  conversationMeta ConversationMeta?
 
   @@index([variantId])
 
@@ -232,6 +251,7 @@ model UserStats {
 
 model WinningTemplate {
   id           String   @id @default(cuid())
+  userId       String?
   industryTag  String?
   toneUsed     String?
   excerpt      String   @db.Text
@@ -240,6 +260,52 @@ model WinningTemplate {
   createdAt    DateTime @default(now())
 
   @@index([industryTag, isPublished])
+  @@index([userId, isPublished])
+}
+
+model UserEngagement {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  currentStreak         Int       @default(0)
+  longestStreak         Int       @default(0)
+  lastActivityAt        DateTime?
+  weeklyGoal            Int       @default(5)
+  weeklyGoalExplicit    Boolean   @default(false)
+  weekProgress          Int       @default(0)
+  lastWeekReset         String
+  pendingCelebrations   Json?
+  lastDigestSentAt      DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserMilestone {
+  id         String   @id @default(cuid())
+  userId     String
+  milestone  String
+  unlockedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, milestone])
+  @@index([userId])
+}
+
+model ConversationMeta {
+  id              String    @id @default(cuid())
+  sentOutreachId  String    @unique
+  company         String?
+  roleTitle       String?
+  pipelineStage   String    @default("OUTREACH")
+  notes           String?   @db.Text
+  followUpDueAt   DateTime?
+  followUpDraftId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sentOutreach SentOutreach @relation(fields: [sentOutreachId], references: [id], onDelete: Cascade)
 }
 
 // ─── Email Threading Engine ───────────────────────────────────────────────────

@@ -1,28 +1,39 @@
-import { randomBytes } from "crypto"
+import { createHash, randomBytes } from "crypto"
 import { prisma } from "@/lib/prisma"
 
-export async function ensureUserApiKey(userId: string): Promise<string> {
-  const existing = await prisma.apiKey.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  })
+const KEY_PREFIX_LENGTH = 10
 
-  if (existing) {
-    return existing.key
-  }
+export function hashApiKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex")
+}
 
+export function apiKeyPrefix(key: string): string {
+  return key.slice(0, KEY_PREFIX_LENGTH)
+}
+
+export async function createUserApiKey(userId: string): Promise<string> {
   const key = "rp_" + randomBytes(32).toString("hex")
+  const keyHash = hashApiKey(key)
+  const keyPrefix = apiKeyPrefix(key)
+
+  await prisma.apiKey.deleteMany({ where: { userId } })
 
   await prisma.apiKey.create({
-    data: { key, userId },
+    data: { keyHash, keyPrefix, userId },
   })
 
   return key
 }
 
+/** Issues a fresh API key on each extension connect handshake. */
+export async function ensureUserApiKey(userId: string): Promise<string> {
+  return createUserApiKey(userId)
+}
+
 export async function validateApiKey(token: string) {
+  const keyHash = hashApiKey(token)
   return prisma.apiKey.findUnique({
-    where: { key: token },
+    where: { keyHash },
     include: {
       user: {
         include: { candidateProfile: true },

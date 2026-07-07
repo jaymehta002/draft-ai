@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
+import { authenticateBearerRequest } from "@/lib/bearer-auth"
 import { prisma } from "@/lib/prisma"
 import { google } from "googleapis"
 import { randomUUID } from "crypto"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { resolveUploadThingFileUrl } from "@/lib/uploadthing-server"
 import { incrementSentStats } from "@/lib/user-stats"
+import { recordActivity } from "@/lib/engagement"
 import { resolveOutreachSendFields } from "@/lib/resolve-send-metadata"
 import { getGmailSendClient } from "@/lib/email-sync/token-manager"
 
@@ -92,24 +94,12 @@ function generateRfcMessageId(): string {
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization")
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const token = authHeader.split(" ")[1]
-    const apiKey = await prisma.apiKey.findUnique({
-      where: { key: token },
-      include: {
-        user: {
-          include: { candidateProfile: true }
-        }
-      }
+    const auth = await authenticateBearerRequest(req, {
+      limit: 10,
+      windowMs: 60 * 60 * 1000,
     })
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "Invalid API Key" }, { status: 401 })
-    }
+    if (auth.error) return auth.error
+    const apiKey = auth.apiKey!
 
     const tokenResult = await getGmailSendClient(apiKey.userId)
     if (!tokenResult.ok) {
@@ -260,6 +250,7 @@ export async function POST(req: Request) {
     })
 
     await incrementSentStats(apiKey.userId)
+    await recordActivity(apiKey.userId, "send")
 
     return NextResponse.json({
       success: true,

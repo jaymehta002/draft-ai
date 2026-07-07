@@ -25,21 +25,12 @@ import { EMAIL_STATE_LABELS, type EmailLifecycleState } from "@/lib/outreach-sta
 import { markEmailResponded, markThreadRead, syncMailbox } from "@/app/actions"
 import { formatGmailAuthError } from "@/lib/gmail-scopes"
 import type { EmailLinkHints } from "@/lib/email-body-format"
+import { formatDateTime } from "@/lib/format-date"
 import { cn } from "@/lib/utils"
 import type { getEmailsData } from "@/app/actions"
 
 type EmailItem = Awaited<ReturnType<typeof getEmailsData>>["emails"][number]
 type ThreadMessage = EmailItem["messages"][number]
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
 
 function formatRelative(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -47,7 +38,7 @@ function formatRelative(iso: string) {
   if (days === 0) return "Today"
   if (days === 1) return "Yesterday"
   if (days < 7) return `${days}d ago`
-  return formatDate(iso)
+  return formatDateTime(iso, { year: true })
 }
 
 function getInitial(name?: string | null, email?: string | null) {
@@ -146,6 +137,26 @@ function ThreadListItem({
             </span>
           </div>
 
+          {email.lifecycleState === "AGED" && (
+            <div className="mx-5 mb-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Haven&apos;t heard back?{" "}
+              <button
+                type="button"
+                className="font-semibold underline hover:no-underline"
+                onClick={async () => {
+                  const res = await fetch("/api/follow-up-draft", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sentOutreachId: email.id, followUpType: "bump" }),
+                  })
+                  if (res.ok) window.location.href = "/dashboard/drafts"
+                }}
+              >
+                Suggest a follow-up
+              </button>
+            </div>
+          )}
+
           {email.subject && (
             <p
               className={cn(
@@ -218,7 +229,7 @@ function MessageBubble({
               {isOutbound ? "You" : "Reply"}
             </p>
             <p className="text-[10px] text-muted-foreground truncate">
-              {formatDate(message.receivedAt)}
+              {formatDateTime(message.receivedAt, { year: true })}
             </p>
           </div>
         </div>
@@ -297,6 +308,26 @@ function EmailDetailView({
           )}
         </div>
 
+        {email.lifecycleState === "AGED" && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Haven&apos;t heard back?{" "}
+            <button
+              type="button"
+              className="font-semibold underline hover:no-underline"
+              onClick={async () => {
+                const res = await fetch("/api/follow-up-draft", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ sentOutreachId: email.id, followUpType: "bump" }),
+                })
+                if (res.ok) window.location.href = "/dashboard/drafts"
+              }}
+            >
+              Suggest a follow-up
+            </button>
+          </div>
+        )}
+
         {email.subject && (
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-0.5">Subject</p>
@@ -307,12 +338,12 @@ function EmailDetailView({
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <Clock className="size-3" />
-            Sent {formatDate(email.sentAt)}
+            Sent {formatDateTime(email.sentAt, { year: true })}
           </span>
           {email.responseReceivedAt && (
             <span className="flex items-center gap-1 text-chart-2">
               <Check className="size-3" />
-              Replied {formatDate(email.responseReceivedAt)}
+              Replied {formatDateTime(email.responseReceivedAt, { year: true })}
             </span>
           )}
           <span className="flex items-center gap-1">
@@ -465,7 +496,7 @@ export function EmailsPanel({ emails, onRefresh, gmailMissingReadonly, linkHints
           <Button
             size="sm"
             variant="outline"
-            onClick={() => signIn("google", { callbackUrl: "/dashboard?section=emails" })}
+            onClick={() => signIn("google", { callbackUrl: "/dashboard/emails" })}
           >
             Reconnect Google
           </Button>

@@ -18,6 +18,7 @@ import { getGmailSyncClient } from "./token-manager"
 import { syncGmailInbox } from "./gmail-sync"
 import { matchThread, normalizeSubject } from "./thread-matcher"
 import { incrementReplyStats } from "@/lib/user-stats"
+import { recordActivity } from "@/lib/engagement"
 
 export interface ProcessResult {
   ok: boolean
@@ -167,6 +168,23 @@ export async function processInboundForUser(userId: string): Promise<ProcessResu
         })
         if (updateResult.count > 0) {
           await incrementReplyStats(userId)
+          const outreach = await prisma.sentOutreach.findUnique({
+            where: { id: thread.sentOutreachId },
+            select: {
+              id: true,
+              recipientName: true,
+              message: true,
+              actionMode: true,
+            },
+          })
+          if (outreach) {
+            await recordActivity(userId, "reply", {
+              outreachId: outreach.id,
+              recipientName: outreach.recipientName,
+              messageExcerpt: outreach.message.slice(0, 200),
+              actionMode: outreach.actionMode,
+            })
+          }
         }
       }
 

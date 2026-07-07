@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { authenticateBearerRequest } from "@/lib/bearer-auth"
 import { prisma } from "@/lib/prisma"
 import {
   draftResultToResponse,
@@ -9,6 +10,7 @@ import {
 import { openai, OPENAI_MODEL } from "@/lib/openai"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { incrementDraftStats } from "@/lib/user-stats"
+import { recordActivity } from "@/lib/engagement"
 import { buildDraftSystemPrompt } from "@/lib/draft-prompt"
 import { classifyIndustry } from "@/lib/industry-classifier"
 
@@ -30,24 +32,12 @@ function normalizeEmailGreeting(message: string, recipientName: string | null) {
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization")
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const token = authHeader.split(" ")[1]
-    const apiKey = await prisma.apiKey.findUnique({
-      where: { key: token },
-      include: {
-        user: {
-          include: { candidateProfile: true }
-        }
-      }
+    const auth = await authenticateBearerRequest(req, {
+      limit: 30,
+      windowMs: 60 * 60 * 1000,
     })
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "Invalid API Key" }, { status: 401 })
-    }
+    if (auth.error) return auth.error
+    const apiKey = auth.apiKey!
 
     const profile = apiKey.user.candidateProfile
     if (!profile?.onboardingComplete) {
@@ -217,6 +207,7 @@ export async function POST(req: Request) {
     // Increment draft stats only on create (not update)
     if (savedDraft.createdAt.getTime() === savedDraft.updatedAt.getTime()) {
       await incrementDraftStats(apiKey.userId)
+      await recordActivity(apiKey.userId, "draft")
     }
 
     return NextResponse.json(draftResultToResponse(savedDraft, false))

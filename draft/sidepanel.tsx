@@ -3,8 +3,16 @@ import { AnimatePresence, motion } from "framer-motion"
 import { Mail, Copy, Loader2, Check, AlertCircle, Sparkles } from "lucide-react"
 import "./style.css"
 import { DraftAIBrand } from "~components/draft-ai-brand"
-import { DRAFT_STORAGE_KEY, type DraftPreview, type DraftVariantPreview } from "~lib/draft"
+import {
+  ACTIVE_POST_KEY,
+  DRAFTS_BY_POST_KEY,
+  getActiveDraft,
+  setDraftForPost,
+  type DraftPreview,
+  type DraftVariantPreview,
+} from "~lib/draft"
 import { persistDraftEdits } from "~lib/draft-sync"
+import { WEB_URL } from "~lib/config"
 import { cn } from "~lib/utils"
 
 function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
@@ -63,6 +71,8 @@ function SidePanel() {
   const [generatingTone, setGeneratingTone] = useState<string | null>(null)
   const [originalMessage, setOriginalMessage] = useState("")
   const [originalSubject, setOriginalSubject] = useState("")
+  const [toneRecommendation, setToneRecommendation] = useState<string | null>(null)
+  const [recommendedTone, setRecommendedTone] = useState<string | null>(null)
 
   const dirtyRef = useRef(false)
   const postIdRef = useRef<string | undefined>(undefined)
@@ -72,7 +82,7 @@ function SidePanel() {
 
   const debouncedPersist = useDebouncedCallback((msg: string, subj: string, email: string) => {
     selfPersistRef.current = true
-    persistDraftEdits(msg, subj, email).finally(() => {
+    persistDraftEdits(msg, subj, email, postIdRef.current).finally(() => {
       setTimeout(() => {
         selfPersistRef.current = false
       }, 50)
@@ -114,8 +124,7 @@ function SidePanel() {
   }, [])
 
   useEffect(() => {
-    chrome.storage.local.get(DRAFT_STORAGE_KEY).then((result) => {
-      const current = result[DRAFT_STORAGE_KEY] as DraftPreview | undefined
+    getActiveDraft().then((current) => {
       if (current) {
         setDraft(current)
         syncFromStorage(current, true)
@@ -127,10 +136,21 @@ function SidePanel() {
       changes: { [key: string]: chrome.storage.StorageChange },
       area: string
     ) => {
-      if (area !== "local" || !changes[DRAFT_STORAGE_KEY]) return
+      if (area !== "local") return
       if (selfPersistRef.current || sendingRef.current || copyingRef.current) return
 
-      const current = changes[DRAFT_STORAGE_KEY].newValue as DraftPreview
+      const activeChange = changes[ACTIVE_POST_KEY]
+      const draftsChange = changes[DRAFTS_BY_POST_KEY]
+      if (!activeChange && !draftsChange) return
+
+      const activePostId =
+        (activeChange?.newValue as string | undefined) ?? postIdRef.current
+      if (!activePostId) return
+
+      const draftsMap = draftsChange?.newValue as Record<string, DraftPreview> | undefined
+      const current = draftsMap?.[activePostId]
+      if (!current) return
+
       setDraft(current)
       syncFromStorage(current)
       setCopied(false)
@@ -145,6 +165,28 @@ function SidePanel() {
     chrome.storage.onChanged.addListener(onChange)
     return () => chrome.storage.onChanged.removeListener(onChange)
   }, [syncFromStorage])
+
+  useEffect(() => {
+    if (!draft || draft.status !== "ready") return
+
+    chrome.storage.local.get(["apiKey"], async (result) => {
+      const apiKey = result.apiKey as string | undefined
+      if (!apiKey) return
+      try {
+        const res = await fetch(`${WEB_URL}/api/extension/insights`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.recommendation?.reason) {
+          setToneRecommendation(data.recommendation.reason)
+          setRecommendedTone(data.recommendation.tone)
+        }
+      } catch {
+        // Non-fatal
+      }
+    })
+  }, [draft?.status, draft?.postId])
 
   const handleMessageChange = (value: string) => {
     dirtyRef.current = true
@@ -181,7 +223,7 @@ function SidePanel() {
 
     selfPersistRef.current = true
     try {
-      await persistDraftEdits(message, subject, normalizedEmail)
+      await persistDraftEdits(message, subject, normalizedEmail, draft.postId)
     } finally {
       setTimeout(() => {
         selfPersistRef.current = false
@@ -216,10 +258,10 @@ function SidePanel() {
 
       if (response?.success) {
         setSubmissionState("sent")
-        setStatusNote({ tone: "success", text: "Email delivered successfully." })
+        setStatusNote({ tone: "success", text: "Conversation started!" })
         dirtyRef.current = false
-        chrome.storage.local.set({
-          [DRAFT_STORAGE_KEY]: {
+        if (draft.postId) {
+          const sentDraft: DraftPreview = {
             ...draft,
             status: "sent",
             message,
@@ -234,8 +276,9 @@ function SidePanel() {
                 }
               : undefined,
             updatedAt: Date.now(),
-          },
-        })
+          }
+          void setDraftForPost(draft.postId, sentDraft)
+        }
       } else {
         setSubmissionState("idle")
         setStatusNote({ tone: "error", text: response?.error || "Failed to send email" })
@@ -251,21 +294,19 @@ function SidePanel() {
   const availableTones = TONE_OPTIONS.filter((t) => !usedTones.has(t.value))
 
   const selectVariant = (variant: DraftVariantPreview | null) => {
-    if (!draft) return
+    if (!draft?.postId) return
     if (!variant) {
       setActiveVariantId(null)
       setMessage(originalMessage)
       setSubject(originalSubject)
       dirtyRef.current = false
-      chrome.storage.local.set({
-        [DRAFT_STORAGE_KEY]: {
-          ...draft,
-          variantId: undefined,
-          activeTone: "professional",
-          message: originalMessage,
-          subject: originalSubject,
-          updatedAt: Date.now(),
-        },
+      void setDraftForPost(draft.postId, {
+        ...draft,
+        variantId: undefined,
+        activeTone: "professional",
+        message: originalMessage,
+        subject: originalSubject,
+        updatedAt: Date.now(),
       })
       return
     }
@@ -274,16 +315,14 @@ function SidePanel() {
     setMessage(variant.message)
     setSubject(variant.subject ?? "")
     dirtyRef.current = false
-    chrome.storage.local.set({
-      [DRAFT_STORAGE_KEY]: {
-        ...draft,
-        variantId: variant.id,
-        activeTone: variant.toneUsed,
-        message: variant.message,
-        subject: variant.subject ?? "",
-        matchInsight: variant.matchInsight ?? draft.matchInsight,
-        updatedAt: Date.now(),
-      },
+    void setDraftForPost(draft.postId, {
+      ...draft,
+      variantId: variant.id,
+      activeTone: variant.toneUsed,
+      message: variant.message,
+      subject: variant.subject ?? "",
+      matchInsight: variant.matchInsight ?? draft.matchInsight,
+      updatedAt: Date.now(),
     })
   }
 
@@ -310,7 +349,7 @@ function SidePanel() {
           variants,
           updatedAt: Date.now(),
         }
-        chrome.storage.local.set({ [DRAFT_STORAGE_KEY]: updated })
+        void setDraftForPost(draft.postId, updated)
         setDraft(updated)
         selectVariant(variant)
       }
@@ -328,7 +367,7 @@ function SidePanel() {
 
       selfPersistRef.current = true
       try {
-        await persistDraftEdits(message, subject, recipientEmail)
+        await persistDraftEdits(message, subject, recipientEmail, draft?.postId)
       } finally {
         setTimeout(() => {
           selfPersistRef.current = false
@@ -354,7 +393,7 @@ function SidePanel() {
       }
 
       setCopied(true)
-      setStatusNote({ tone: "info", text: "Copied. Paste it directly into their DMs." })
+      setStatusNote({ tone: "success", text: "Conversation started! Paste into their DMs." })
       setTimeout(() => setCopied(false), 2000)
     } finally {
       copyingRef.current = false
@@ -422,6 +461,11 @@ function SidePanel() {
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
                     Tone variants
                   </p>
+                  {toneRecommendation && (
+                    <p className="text-[10px] text-primary rounded-md bg-primary/5 px-2 py-1.5">
+                      {toneRecommendation}
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
@@ -444,7 +488,9 @@ function SidePanel() {
                           "rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize transition-colors",
                           activeVariantId === v.id
                             ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground hover:bg-accent"
+                            : recommendedTone === v.toneUsed
+                              ? "ring-2 ring-primary/40 bg-muted text-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-accent"
                         )}
                       >
                         {v.toneUsed}
@@ -551,10 +597,15 @@ function SidePanel() {
                     Sending
                   </>
                 ) : isSent ? (
-                  <>
+                  <motion.span
+                    className="inline-flex items-center gap-2"
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 12 }}
+                  >
                     <Check className="h-4 w-4" />
                     Sent
-                  </>
+                  </motion.span>
                 ) : (
                   <>
                     <Mail className="h-4 w-4" />
@@ -573,10 +624,20 @@ function SidePanel() {
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Copying
                   </>
+                ) : copied ? (
+                  <motion.span
+                    className="inline-flex items-center gap-2"
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 12 }}
+                  >
+                    <Check className="h-4 w-4" />
+                    Copied
+                  </motion.span>
                 ) : (
                   <>
                     <Copy className="h-4 w-4" />
-                    {copied ? "Copied" : "Copy message"}
+                    Copy message
                   </>
                 )}
               </button>

@@ -263,6 +263,25 @@ function ExtensionConnectContent() {
           throw { offline: true }
         }
 
+        const initResponse = await fetch("/api/extension/connect/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ state: currentState }),
+          signal: controller.signal,
+        })
+
+        if (!initResponse.ok) {
+          let initData: { code?: string; error?: string } | null = null
+          try {
+            initData = await initResponse.json()
+          } catch {
+            initData = null
+          }
+          const info = classifyError(initResponse.status, initData?.code, initData?.error)
+          setPhase({ step: "error", info: { ...info, message: initData?.error || info.message }, attempt })
+          return
+        }
+
         const response = await fetch("/api/extension/connect", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

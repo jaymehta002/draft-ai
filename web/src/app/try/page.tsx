@@ -1,13 +1,14 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
+import { Suspense, useState } from "react"
 import { useSession } from "next-auth/react"
+import Link from "next/link"
 import { Sparkles, Check, ArrowRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { DraftAIBrand } from "@/components/draft-ai-brand"
+import { GoogleSignInExplainer } from "@/components/google-sign-in-explainer"
 import { SAMPLE_POST_TEXT } from "@/lib/draft-prompt"
 import { FadeIn } from "@/components/motion"
 
@@ -21,6 +22,20 @@ type DraftResult = {
 }
 
 export default function TryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <Loader2 className="size-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <TryPageContent />
+    </Suspense>
+  )
+}
+
+function TryPageContent() {
   const { data: session } = useSession()
   const [postText, setPostText] = useState(SAMPLE_POST_TEXT)
   const [bioHint, setBioHint] = useState("I spent the last two years building CRDT sync at Scaleflow")
@@ -40,6 +55,12 @@ export default function TryPage() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || "Failed to generate draft")
       setDraft(json.draft)
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(
+          "draft-ai-try-preview",
+          JSON.stringify({ postText, draft: json.draft })
+        )
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
@@ -135,17 +156,42 @@ export default function TryPage() {
               </div>
             )}
 
-            <div className="rounded-xl border border-border bg-muted/30 p-5">
-              <p className="text-sm font-medium text-foreground">Get this in your LinkedIn feed</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Install the Chrome extension to draft directly on X and LinkedIn posts.
-              </p>
-              <Button className="mt-4 gap-2" asChild>
-                <Link href={session ? "/dashboard?section=extension" : "/onboarding"}>
-                  {session ? "Open Integrations" : "Sign up free"}
-                  <ArrowRight className="size-4" />
-                </Link>
-              </Button>
+            <div className="rounded-xl border border-border bg-muted/30 p-5 space-y-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {draft ? "Save this draft to your profile" : "Get this in your LinkedIn feed"}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {draft
+                    ? "Sign in to save your profile and send outreach for real."
+                    : "Install the Chrome extension to draft directly on X and LinkedIn posts."}
+                </p>
+              </div>
+              {session ? (
+                <Button className="gap-2" asChild>
+                  <Link href="/dashboard/extension">
+                    Open Integrations
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+              ) : draft ? (
+                <GoogleSignInExplainer
+                  callbackUrl="/onboarding?quick=true"
+                  trigger={(open) => (
+                    <Button className="gap-2" onClick={open}>
+                      Sign in to save
+                      <ArrowRight className="size-4" />
+                    </Button>
+                  )}
+                />
+              ) : (
+                <Button className="gap-2" asChild>
+                  <Link href="/onboarding">
+                    Sign up free
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
         </FadeIn>

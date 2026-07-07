@@ -19,19 +19,12 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { filterBySearch, sortByField } from "@/lib/panel-filters"
+import { formatDateTime } from "@/lib/format-date"
 import { cn } from "@/lib/utils"
 import type { getDraftsData } from "@/app/actions"
+import { DraftActions } from "@/components/panels/draft-actions"
 
 type DraftItem = Awaited<ReturnType<typeof getDraftsData>>["drafts"][number]
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
 
 function formatRelative(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -42,7 +35,7 @@ function formatRelative(iso: string) {
   const days = Math.floor(hrs / 24)
   if (days === 1) return "Yesterday"
   if (days < 7) return `${days}d ago`
-  return formatDate(iso)
+  return formatDateTime(iso)
 }
 
 function getInitial(name?: string | null, email?: string | null) {
@@ -248,9 +241,19 @@ function DraftDetailView({ draft }: { draft: DraftItem }) {
             </span>
             <span className="flex items-center gap-1">
               <Clock className="size-3" />
-              {formatDate(draft.updatedAt)}
+              {formatDateTime(draft.updatedAt)}
             </span>
           </div>
+
+          <Separator />
+
+          <DraftActions
+            draftId={draft.id}
+            actionMode={draft.actionMode}
+            postUrl={draft.postUrl}
+            message={draft.message}
+            gmailConnected
+          />
 
           <Separator />
 
