@@ -44,7 +44,7 @@ export function DashboardShell({ active, counts, user, children }: DashboardShel
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-zinc-50 flex">
       <ReferralRedeemer />
       <AppSidebar
         active={effectiveActive}
@@ -57,33 +57,31 @@ export function DashboardShell({ active, counts, user, children }: DashboardShel
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-40 border-b border-border bg-card/95 shadow-sm backdrop-blur-sm">
-          <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3">
-              <MobileMenuButton onClick={() => setMobileNavOpen(true)} />
-              <h1 className="text-sm font-semibold tracking-tight text-foreground">
-                {SECTION_LABELS[effectiveActive]}
-              </h1>
-            </div>
-            <AccountMenu
-              name={user?.name}
-              email={user?.email}
-              image={user?.image}
-              title={user?.title}
-              onNavigate={(s) => {
-                if (s === "profile:preferences") router.push("/dashboard/profile?tab=preferences")
-                else if (s === "profile:billing") router.push("/dashboard/profile?tab=billing")
-                else if (s === "profile") router.push("/dashboard/profile?tab=profile")
-                else if (s === "extension") router.push("/dashboard/extension")
-                else navigateSection(s as DashboardSection)
-              }}
-            />
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-100 bg-white/80 px-6 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <MobileMenuButton onClick={() => setMobileNavOpen(true)} />
+            <h1 className="text-sm font-semibold text-foreground">
+              {SECTION_LABELS[effectiveActive]}
+            </h1>
           </div>
+          <AccountMenu
+            name={user?.name}
+            email={user?.email}
+            image={user?.image}
+            title={user?.title}
+            onNavigate={(s) => {
+              if (s === "profile:preferences") router.push("/dashboard/profile?tab=preferences")
+              else if (s === "profile:billing") router.push("/dashboard/profile?tab=billing")
+              else if (s === "profile") router.push("/dashboard/profile?tab=profile")
+              else if (s === "extension") router.push("/dashboard/extension")
+              else navigateSection(s as DashboardSection)
+            }}
+          />
         </header>
 
         <UsageBanner />
 
-        <main className="flex-1 overflow-auto bg-background">
+        <main className="flex-1 overflow-auto bg-zinc-50 p-6">
           <ReplyCelebration />
           {children}
         </main>

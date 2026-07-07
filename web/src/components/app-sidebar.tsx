@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils"
 import { dashboardPathForSection } from "@/lib/dashboard-routes"
 import { DraftAIMark } from "@/components/draft-ai-brand"
+import { LayoutIndicator } from "@/components/motion"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -253,27 +254,20 @@ function NavContent({
 
           return (
             <div key={id} className="group/item relative">
-              {/* Active indicator bar */}
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "absolute left-0 top-1/2 z-10 w-[3px] -translate-y-1/2 rounded-full bg-primary transition-[height,opacity] duration-300",
-                  isActive ? "h-[60%] opacity-100" : "h-0 opacity-0"
-                )}
-                style={{ transitionTimingFunction: EASE }}
-              />
+              {isActive && <LayoutIndicator />}
 
               <Link
                 href={dashboardPathForSection(id)}
                 onClick={() => onMobileClose()}
                 title={collapsed ? label : undefined}
                 aria-current={isActive ? "page" : undefined}
+                data-active={isActive}
                 className={cn(
-                  "group/button relative flex w-full items-center overflow-hidden rounded-lg py-2.5 text-sm transition-[background-color,color,box-shadow,transform] duration-200 ease-out will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+                  "group/button relative flex w-full items-center overflow-hidden rounded-xl py-2.5 text-sm transition-[background-color,color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
                   collapsed ? "justify-center gap-0 px-0" : "gap-3 px-3",
                   isActive
-                    ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground shadow-sm"
-                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground active:bg-sidebar-accent active:scale-[0.98] active:duration-75"
+                    ? "bg-primary/[0.06] font-semibold text-primary"
+                    : "text-muted-foreground hover:bg-zinc-50 hover:text-foreground active:scale-[0.98] active:duration-75"
                 )}
                 style={{ transitionTimingFunction: EASE }}
               >
@@ -376,9 +370,9 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
       <aside
         className={cn(
           "hidden lg:flex lg:shrink-0 lg:flex-col lg:h-screen lg:sticky lg:top-0",
-          "bg-sidebar border-r border-sidebar-border shadow-sm",
+          "border-r border-slate-100 bg-white",
           "transition-[width] will-change-[width]",
-          collapsed ? "lg:w-[64px]" : "lg:w-[224px]",
+          collapsed ? "lg:w-[64px]" : "lg:w-[240px]",
           isAnimating && "overflow-hidden"
         )}
         style={{ transitionTimingFunction: EASE, transitionDuration: "350ms" }}

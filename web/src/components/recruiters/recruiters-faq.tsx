@@ -15,13 +15,13 @@ export function RecruitersFaq() {
           {FAQ_ITEMS.map((item) => (
             <details
               key={item.q}
-              className="recruit-surface group rounded-xl px-5 py-4"
+              className="group rounded-xl border border-slate-100 bg-white px-5 py-4 shadow-sm transition-[box-shadow,border-color] duration-200 hover:border-slate-200 hover:shadow-md"
             >
-              <summary className="flex items-center justify-between gap-4 font-medium text-[var(--recruit-text)]">
+              <summary className="flex items-center justify-between gap-4 font-medium text-foreground">
                 {item.q}
-                <ChevronDown className="faq-chevron size-4 shrink-0 text-[var(--recruit-muted)]" />
+                <ChevronDown className="faq-chevron size-4 shrink-0 text-muted-foreground" />
               </summary>
-              <p className="mt-3 text-sm leading-relaxed text-[var(--recruit-muted)]">
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                 {item.a}
               </p>
             </details>

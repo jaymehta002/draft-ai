@@ -1,10 +1,10 @@
 import type { Metadata } from "next"
-import { RecruitersHeader } from "@/components/recruiters/recruiters-header"
+import { SiteHeader } from "@/components/marketing/site-header"
 import { RecruitersFooter } from "@/components/recruiters/recruiters-footer"
 import { HeroSection } from "@/components/recruiters/hero-section"
 import { ParadigmSection } from "@/components/recruiters/paradigm/paradigm-section"
 import { BentoGrid } from "@/components/recruiters/bento/bento-grid"
-import { EnterprisePricing } from "@/components/recruiters/pricing/enterprise-pricing"
+// import { EnterprisePricing } from "@/components/recruiters/pricing/enterprise-pricing"
 import { RecruitersFaq } from "@/components/recruiters/recruiters-faq"
 import { FinalCtaSection } from "@/components/recruiters/final-cta-section"
 import { RECRUITERS_META, buildRecruitersJsonLd } from "@/lib/recruiters-content"
@@ -35,12 +35,12 @@ export default function RecruitersPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <RecruitersHeader />
+      <SiteHeader subtitle="For Recruiters" />
       <main>
         <HeroSection />
         <ParadigmSection />
         <BentoGrid />
-        <EnterprisePricing />
+        {/* <EnterprisePricing /> */}
         <RecruitersFaq />
         <FinalCtaSection />
       </main>

@@ -2,7 +2,8 @@ import Link from "next/link"
 import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { DraftAIBrand } from "@/components/draft-ai-brand"
+import { SiteHeader } from "@/components/marketing/site-header"
+import { SiteFooter } from "@/components/marketing/site-footer"
 import { PricingCta } from "@/components/pricing/pricing-cta"
 
 const PLANS = [
@@ -36,15 +37,8 @@ const PLANS = [
 
 export default function PricingPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-          <DraftAIBrand href="/" subtitle="Pricing" />
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/">Back home</Link>
-          </Button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-white">
+      <SiteHeader subtitle="Pricing" />
 
       <main className="mx-auto max-w-5xl px-4 py-14 sm:px-6">
         <div className="text-center mb-12">
@@ -104,6 +98,7 @@ export default function PricingPage() {
           ))}
         </div>
       </main>
+      <SiteFooter />
     </div>
   )
 }

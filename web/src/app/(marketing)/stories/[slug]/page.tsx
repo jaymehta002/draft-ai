@@ -3,7 +3,8 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowRight, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { DraftAIBrand } from "@/components/draft-ai-brand"
+import { SiteHeader } from "@/components/marketing/site-header"
+import { SiteFooter } from "@/components/marketing/site-footer"
 import { STORIES, getStory } from "@/lib/seo-content"
 import { siteUrl } from "@/lib/site"
 
@@ -40,15 +41,8 @@ export default async function StoryPage({
   const lift = Math.round((story.replyRateAfter / story.replyRateBefore) * 10) / 10
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-          <DraftAIBrand href="/" />
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/pricing">Pricing</Link>
-          </Button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-white">
+      <SiteHeader />
 
       <main className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
@@ -87,6 +81,7 @@ export default async function StoryPage({
           </Button>
         </div>
       </main>
+      <SiteFooter />
     </div>
   )
 }

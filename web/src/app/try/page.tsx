@@ -7,7 +7,7 @@ import { Sparkles, Check, ArrowRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
-import { DraftAIBrand } from "@/components/draft-ai-brand"
+import { SiteHeader } from "@/components/marketing/site-header"
 import { GoogleSignInExplainer } from "@/components/google-sign-in-explainer"
 import { SAMPLE_POST_TEXT } from "@/lib/draft-prompt"
 import { FadeIn } from "@/components/motion"
@@ -71,15 +71,8 @@ function TryPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4 sm:px-6">
-          <DraftAIBrand subtitle="Try it now" />
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/">Back home</Link>
-          </Button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-white">
+      <SiteHeader subtitle="Try it now" minimal />
 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <FadeIn>

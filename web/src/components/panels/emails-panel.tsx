@@ -94,8 +94,8 @@ function ThreadListItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "group w-full text-left px-3 py-3 transition-[background-color] duration-150 border-b border-border/50 last:border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-        isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted/50"
+        "group w-full text-left px-4 py-3 transition-[background-color] duration-200 border-b border-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        isSelected ? "bg-primary/[0.04] border-l-2 border-l-primary" : "hover:bg-zinc-50"
       )}
     >
       <div className="flex items-start gap-3">

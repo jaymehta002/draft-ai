@@ -13,9 +13,9 @@ export function RecruitersFooter() {
           <a href="#product" className="transition-colors hover:text-[var(--recruit-text)]">
             Product
           </a>
-          <a href="#pricing" className="transition-colors hover:text-[var(--recruit-text)]">
+          {/* <a href="#pricing" className="transition-colors hover:text-[var(--recruit-text)]">
             Pricing
-          </a>
+          </a> */}
           <a href="#faq" className="transition-colors hover:text-[var(--recruit-text)]">
             FAQ
           </a>

@@ -5,5 +5,5 @@ export default function RecruitersLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <div className="recruiters min-h-screen dark">{children}</div>
+  return <div className="recruiters min-h-screen">{children}</div>
 }

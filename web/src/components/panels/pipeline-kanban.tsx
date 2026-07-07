@@ -65,7 +65,7 @@ function PipelineCard({
     <button
       type="button"
       onClick={() => onSelect(item)}
-      className="w-full rounded-lg border border-border bg-card p-3 text-left shadow-sm transition-[box-shadow,transform] duration-200 hover:shadow-md hover:-translate-y-0.5"
+      className="w-full rounded-xl border border-slate-100 bg-white p-3 text-left shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-grab"
     >
       <div className="mb-2 flex items-start justify-between gap-2">
         <p className="truncate text-xs font-semibold text-foreground">{name}</p>
@@ -232,19 +232,13 @@ export function PipelineKanban({ columns }: PipelineKanbanProps) {
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMN_ORDER.map((col) => (
-          <div key={col} className="flex flex-col rounded-xl border border-border bg-muted/20">
-            <div className="border-b border-border px-3 py-2.5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-foreground">
-                  {PIPELINE_COLUMN_LABELS[col]}
-                </h3>
-                <Badge variant="secondary" className="text-[10px] tabular-nums">
-                  {columns[col].length}
-                </Badge>
-              </div>
-            </div>
+          <div key={col} className="flex w-72 shrink-0 flex-col rounded-2xl border border-slate-100 bg-zinc-50/50 p-3">
+            <h3 className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {PIPELINE_COLUMN_LABELS[col]}{" "}
+              <span className="text-foreground">{columns[col].length}</span>
+            </h3>
             <ScrollArea className="h-[calc(100vh-14rem)] p-2">
               <div className="space-y-2">
                 {columns[col].length === 0 ? (

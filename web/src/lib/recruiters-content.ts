@@ -3,16 +3,18 @@ import { getCalDemoUrl } from "@/lib/cal-demo"
 
 export type FaqItem = { q: string; a: string }
 
-export type BentoAnimation = "morph" | "typewriter" | "tilt" | "none"
-
-export type BentoCell = {
-  id: string
-  size: "sm" | "md" | "lg" | "wide"
-  title: string
-  body: string
-  animation: BentoAnimation
-  examplePrompt?: string
+export type BentoCandidate = {
+  rank: number
+  initials: string
+  name: string
+  role: string
+  score: number
+  tags?: string[]
 }
+
+export type BentoStage = { stage: string; count: number }
+
+export type BentoTeammate = { initials: string; name: string }
 
 export type PricingTier = {
   name: string
@@ -76,51 +78,83 @@ export const PARADIGM = {
   },
 }
 
-export const BENTO_CELLS: BentoCell[] = [
-  {
-    id: "matching",
-    size: "lg",
-    title: "AI Matching Engine",
-    body: "Resumes don't just get scored — they morph into ranked candidate profiles with stack overlap, culture signals, and comp fit.",
-    animation: "morph",
+export const BENTO = {
+  matching: {
+    eyebrow: "MATCHING ENGINE",
+    title: "Ranked, not just scored",
+    body: "Every resume becomes a live profile — ranked by stack overlap, culture signal, and comp fit.",
+    candidates: [
+      {
+        rank: 1,
+        initials: "AC",
+        name: "Alex Chen",
+        role: "Staff Backend Engineer",
+        score: 94,
+        tags: ["Go", "K8s", "Fintech"],
+      },
+      {
+        rank: 2,
+        initials: "PR",
+        name: "Priya Rao",
+        role: "Senior Platform Engineer",
+        score: 88,
+      },
+      {
+        rank: 3,
+        initials: "MK",
+        name: "Marcus Kim",
+        role: "Backend Engineer",
+        score: 81,
+      },
+    ] satisfies BentoCandidate[],
   },
-  {
-    id: "job-post",
-    size: "sm",
-    title: "One-Line Job Posts",
-    body: "Type a brief. Get a polished, SEO-optimized job description that attracts the right candidates.",
-    animation: "typewriter",
-    examplePrompt: "Senior backend, Go + K8s, fintech, $180–220k, remote US",
+  jobPost: {
+    eyebrow: "JOB POSTS",
+    title: "One line in, full post out",
+    body: "Type a brief. Get a polished, SEO-ready description.",
+    brief: "Senior backend · Go + K8s · fintech · remote",
+    tags: ["Go", "Kubernetes", "PostgreSQL", "Remote US", "$180–220k", "Fintech"],
   },
-  {
-    id: "command-center",
-    size: "wide",
-    title: "Recruiting Command Center",
-    body: "Pipeline, outreach, and team collaboration in one view. No tab-switching between five tools.",
-    animation: "tilt",
+  command: {
+    eyebrow: "COMMAND CENTER",
+    title: "Every stage, one view",
+    body: "Pipeline, outreach, and collaboration — no tab-switching between five tools.",
+    stages: [
+      { stage: "Sourced", count: 47 },
+      { stage: "Ranked", count: 12 },
+      { stage: "Interview", count: 5 },
+      { stage: "Offer", count: 2 },
+    ] satisfies BentoStage[],
   },
-  {
-    id: "signal",
-    size: "sm",
-    title: "Talent Signal",
-    body: "Surface candidates who are actively engaging with your space — before they hit the open market.",
-    animation: "none",
+  signal: {
+    eyebrow: "TALENT SIGNAL",
+    title: "Catch them early",
+    body: "Spot candidates warming up before they hit the open market.",
+    activeLabel: "3 active now",
   },
-  {
-    id: "team",
-    size: "sm",
-    title: "Team Collaboration",
-    body: "Hiring managers, recruiters, and sourcers share one live shortlist with notes and scorecards.",
-    animation: "none",
+  team: {
+    eyebrow: "COLLABORATION",
+    title: "One live shortlist",
+    body: "Managers, recruiters, and sourcers share notes and scorecards.",
+    teammates: [
+      { initials: "DL", name: "Dana Lee" },
+      { initials: "JP", name: "Jordan Park" },
+      { initials: "SM", name: "Sam Ortiz" },
+      { initials: "RN", name: "Riya Nair" },
+    ] satisfies BentoTeammate[],
+    extraCount: 3,
+    note: {
+      author: "Dana",
+      text: "Strong systems design — advance to onsite.",
+    },
   },
-  {
-    id: "security",
-    size: "sm",
-    title: "Enterprise Security",
-    body: "SOC 2 Type II, SSO, role-based access, and data residency options for global teams.",
-    animation: "none",
+  security: {
+    eyebrow: "SECURITY",
+    title: "Enterprise-ready by default",
+    body: "The controls your security team asks for, already switched on.",
+    checklist: ["SOC 2 Type II", "SSO & SAML", "Role-based access", "US / EU residency"],
   },
-]
+}
 
 export const PRICING_TIERS: PricingTier[] = [
   {

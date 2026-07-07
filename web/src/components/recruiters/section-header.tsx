@@ -20,18 +20,18 @@ export function SectionHeader({
       }
     >
       {label && (
-        <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-[#5085fb]">
+        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary">
           {label}
         </p>
       )}
       <h2
         id={id}
-        className="mt-3 font-serif text-3xl tracking-tight text-[var(--recruit-text)] sm:text-4xl"
+        className="mt-3 font-serif text-3xl tracking-tight text-foreground sm:text-4xl"
       >
         {headline}
       </h2>
       {subheadline && (
-        <p className="mt-4 text-base leading-relaxed text-[var(--recruit-muted)] sm:text-lg">
+        <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
           {subheadline}
         </p>
       )}

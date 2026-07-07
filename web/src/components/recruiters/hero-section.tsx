@@ -1,66 +1,62 @@
 import { HERO } from "@/lib/recruiters-content"
 import { getCalDemoUrl } from "@/lib/cal-demo"
+import { Button } from "@/components/ui/button"
+import { ScrollReveal } from "@/components/motion"
 import { HeroHeadlineCycle } from "./hero/hero-headline-cycle.client"
-import { HeroEffectsLazy } from "./hero/hero-effects-lazy.client"
+import { CandidateRankPreview } from "./hero/candidate-rank-preview"
 
 export function HeroSection() {
   const demoUrl = getCalDemoUrl()
 
   return (
-    <section className="relative overflow-hidden px-4 pb-20 pt-16 sm:px-6 sm:pt-24 lg:px-8">
-      <div className="recruit-orb recruit-orb-1" aria-hidden="true" />
-      <div className="recruit-orb recruit-orb-2" aria-hidden="true" />
-      <HeroEffectsLazy />
+    <section className="relative overflow-hidden bg-white pt-8 pb-16">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -top-40 right-0 h-[28rem] w-[28rem] rounded-full bg-primary/[0.05] blur-[120px]" />
+        <div className="absolute bottom-0 left-0 h-[20rem] w-[20rem] rounded-full bg-slate-100 blur-[100px]" />
+      </div>
 
-      <div className="relative z-10 mx-auto max-w-4xl text-center">
-        <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-[#5085fb]">
-          {HERO.eyebrow}
-        </p>
+      <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 lg:grid-cols-2 lg:px-8">
+        <ScrollReveal>
+          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary">
+            {HERO.eyebrow}
+          </p>
 
-        <h1 className="mt-6 font-serif text-4xl leading-[1.1] tracking-tight text-[var(--recruit-text)] sm:text-5xl lg:text-6xl">
-          <span aria-live="polite">
-            <HeroHeadlineCycle headlines={HERO.headlines} />
-          </span>
-          <span className="sr-only">
-            {" "}
-            — also: {HERO.headlines.slice(1).join("; ")}
-          </span>
-        </h1>
+          <h1 className="mt-4 font-serif text-4xl tracking-tight sm:text-5xl lg:text-6xl">
+            <span aria-live="polite">
+              <HeroHeadlineCycle headlines={HERO.headlines} />
+            </span>
+            <span className="sr-only">
+              {" "}
+              — also: {HERO.headlines.slice(1).join("; ")}
+            </span>
+          </h1>
 
-        <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-[var(--recruit-muted)]">
-          {HERO.subheadline}
-        </p>
+          <p className="mt-6 text-lg leading-relaxed text-muted-foreground">{HERO.subheadline}</p>
 
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <a
-            href={demoUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="recruit-cta-primary inline-flex rounded-xl px-6 py-3 text-sm font-semibold"
-          >
-            {HERO.primaryCta}
-          </a>
-          <a
-            href="#product"
-            className="recruit-cta-secondary inline-flex rounded-xl px-6 py-3 text-sm font-semibold"
-          >
-            {HERO.secondaryCta}
-          </a>
-        </div>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button size="lg" className="shadow-[0_2px_12px_rgba(20,71,230,0.25)]" asChild>
+              <a href={demoUrl} target="_blank" rel="noopener noreferrer">
+                {HERO.primaryCta}
+              </a>
+            </Button>
+            <Button variant="outline" size="lg" asChild>
+              <a href="#product">{HERO.secondaryCta}</a>
+            </Button>
+          </div>
 
-        <div className="mt-16 grid gap-4 sm:grid-cols-3">
-          {HERO.metrics.map((m) => (
-            <div
-              key={m.label}
-              className="recruit-glass rounded-xl px-5 py-4 text-left"
-            >
-              <p className="font-serif text-2xl font-semibold text-[var(--recruit-text)]">
-                {m.value}
-              </p>
-              <p className="mt-1 text-sm text-[var(--recruit-muted)]">{m.label}</p>
-            </div>
-          ))}
-        </div>
+          <dl className="mt-10 grid grid-cols-3 gap-6 border-t border-slate-100 pt-8">
+            {HERO.metrics.map((m) => (
+              <div key={m.label}>
+                <dt className="font-serif text-2xl text-foreground">{m.value}</dt>
+                <dd className="text-xs text-muted-foreground">{m.label}</dd>
+              </div>
+            ))}
+          </dl>
+        </ScrollReveal>
+
+        <ScrollReveal delay={0.12}>
+          <CandidateRankPreview />
+        </ScrollReveal>
       </div>
     </section>
   )

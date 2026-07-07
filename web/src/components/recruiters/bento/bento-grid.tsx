@@ -1,6 +1,5 @@
-import { BENTO_CELLS } from "@/lib/recruiters-content"
 import { SectionHeader } from "@/components/recruiters/section-header"
-import { BentoCellWrapper } from "./bento-cell"
+import { BentoGridAnimated } from "./bento-grid.client"
 
 export function BentoGrid() {
   return (
@@ -12,10 +11,8 @@ export function BentoGrid() {
           subheadline="From brief to shortlist — one platform, zero tab-switching."
         />
 
-        <div className="mt-14 grid auto-rows-[minmax(180px,auto)] grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {BENTO_CELLS.map((cell) => (
-            <BentoCellWrapper key={cell.id} cell={cell} />
-          ))}
+        <div className="mt-14 rounded-2xl border border-slate-100 bg-zinc-50/50 p-4">
+          <BentoGridAnimated />
         </div>
       </div>
     </section>

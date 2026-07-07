@@ -5,37 +5,42 @@
 :root {
   --background: #ffffff;
   --foreground: #0a0a0a;
+  --surface-subtle: #fafafa;
+  --surface-elevated: #ffffff;
   --card: #ffffff;
   --card-foreground: #0a0a0a;
   --popover: #ffffff;
   --popover-foreground: #0a0a0a;
   --primary: #1447e6;
+  --primary-hover: #1039c4;
+  --primary-glow: rgba(20, 71, 230, 0.12);
   --primary-foreground: #fafafa;
-  --secondary: #e5e7eb;
+  --secondary: #f1f5f9;
   --secondary-foreground: #171717;
-  --muted: #e5e7eb;
-  --muted-foreground: #737373;
-  --accent: #e5e7eb;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #f1f5f9;
   --accent-foreground: #171717;
   --destructive: #e7000b;
   --destructive-foreground: #ffffff;
-  --border: #dadee4;
-  --input: #dadee4;
+  --border: #f1f5f9;
+  --border-strong: #e2e8f0;
+  --input: #e2e8f0;
   --ring: #1447e6;
   --chart-1: #f54900;
   --chart-2: #009689;
   --chart-3: #104e64;
   --chart-4: #ffb900;
   --chart-5: #fe9a00;
-  --sidebar: #fafafa;
+  --sidebar: #ffffff;
   --sidebar-foreground: #0a0a0a;
   --sidebar-primary: #1447e6;
   --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #e5e7eb;
-  --sidebar-accent-foreground: #171717;
-  --sidebar-border: #dadee4;
+  --sidebar-accent: rgba(20, 71, 230, 0.06);
+  --sidebar-accent-foreground: #1447e6;
+  --sidebar-border: #f1f5f9;
   --sidebar-ring: #1447e6;
-  --sidebar-muted: #737373;
+  --sidebar-muted: #64748b;
   --radius: 0.625rem;
   --shadow-x: 0;
   --shadow-y: 1px;
@@ -244,4 +249,48 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+}
+
+/* Marquee */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 32s linear infinite;
+  width: max-content;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Shimmer skeleton */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Reduced motion — platform-wide */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -3,7 +3,8 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Check, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { DraftAIBrand } from "@/components/draft-ai-brand"
+import { SiteHeader } from "@/components/marketing/site-header"
+import { SiteFooter } from "@/components/marketing/site-footer"
 import { PERSONAS, getPersona } from "@/lib/seo-content"
 import { siteUrl } from "@/lib/site"
 
@@ -52,20 +53,13 @@ export default async function OutreachPersonaPage({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-white">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
 
-      <header className="border-b border-border">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-          <DraftAIBrand href="/" />
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/pricing">Pricing</Link>
-          </Button>
-        </div>
-      </header>
+      <SiteHeader />
 
       <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
@@ -126,6 +120,7 @@ export default async function OutreachPersonaPage({
           </Button>
         </div>
       </main>
+      <SiteFooter />
     </div>
   )
 }
