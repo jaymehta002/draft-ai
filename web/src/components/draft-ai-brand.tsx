@@ -96,13 +96,13 @@ export function DraftAILogo({
   const iconSizes = {
     sm: "size-[14px]",
     md: "size-[18px]",
-    lg: "size-[22px]",
+    lg: "size-[32px]",
   }
 
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center bg-primary/10 text-primary",
+        "flex shrink-0 items-center justify-center text-primary",
         sizes[size],
         className
       )}
@@ -125,7 +125,7 @@ export function DraftAIBrand({
 }) {
   const content = (
     <>
-      <DraftAILogo size={variant === "compact" ? "sm" : "md"} />
+      <DraftAILogo size='lg' /> 
       {variant !== "monogram" && (
         <span className="leading-none">
           <span className="block font-serif text-[15px] font-semibold tracking-tight text-foreground">
