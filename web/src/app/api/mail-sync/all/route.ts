@@ -44,8 +44,10 @@ export async function GET(req: Request) {
   const summary = results.map((r, i) => {
     const userId = userIds[i]
     if (r.status === "fulfilled") {
-      const rest = { ...r.value }
-      delete (rest as { userId?: string }).userId
+      // Avoid `userId` duplication: `r.value` is already typed to include `userId`.
+      // We want the response's `userId` to come from `userIds[i]`, while keeping the rest of the payload.
+      const { userId: _ignoredUserId, ...rest } = r.value
+      void _ignoredUserId
       return { userId, status: r.status, ...rest }
     }
     return { userId, status: r.status, error: String(r.reason) }
