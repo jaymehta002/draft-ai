@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
   Gauge,
-  PenLine,
   Inbox,
   MessageCircle,
   CircleUserRound,
@@ -147,12 +146,10 @@ function SidebarFooter({
   user,
   loading,
   collapsed,
-  onNavigate,
 }: {
   user?: AppSidebarProps["user"]
   loading?: boolean
   collapsed: boolean
-  onNavigate: (section: DashboardSection) => void
 }) {
   if (loading) {
     return (
@@ -223,13 +220,12 @@ function SidebarFooter({
 
 function NavContent({
   active,
-  onNavigate,
   counts,
   onMobileClose,
   collapsed = false,
   user,
   loading,
-}: Pick<AppSidebarProps, "active" | "onNavigate" | "counts" | "onMobileClose" | "user" | "loading"> & {
+}: Pick<AppSidebarProps, "active" | "counts" | "onMobileClose" | "user" | "loading"> & {
   collapsed?: boolean
 }) {
   return (
@@ -339,13 +335,13 @@ function NavContent({
         user={user}
         loading={loading}
         collapsed={collapsed}
-        onNavigate={onNavigate}
       />
     </div>
   )
 }
 
-export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClose, user, loading }: AppSidebarProps) {
+export function AppSidebar({ active, onNavigate: _onNavigate, counts, mobileOpen, onMobileClose, user, loading }: AppSidebarProps) {
+  void _onNavigate
   const [collapsed, setCollapsed] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
 
@@ -379,7 +375,6 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
       >
         <NavContent
           active={active}
-          onNavigate={onNavigate}
           counts={counts}
           onMobileClose={onMobileClose}
           collapsed={collapsed}
@@ -447,7 +442,6 @@ export function AppSidebar({ active, onNavigate, counts, mobileOpen, onMobileClo
             </div>
             <NavContent
               active={active}
-              onNavigate={onNavigate}
               counts={counts}
               onMobileClose={onMobileClose}
               collapsed={false}

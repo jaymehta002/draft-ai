@@ -11,7 +11,6 @@ import {
   parseCandidateFormData,
   syncLegacyFields,
   toCandidateProfileData,
-  type CandidateProfileData,
 } from "@/lib/candidate-profile"
 import {
   accountHasFullGmailAccess,

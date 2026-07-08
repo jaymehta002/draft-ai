@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { PIPELINE_COLUMN_LABELS, type PipelineColumn } from "@/lib/pipeline"
 import { updateConversationMeta } from "@/app/actions/conversation"
-import { cn } from "@/lib/utils"
 
 type PipelineItem = {
   id: string

@@ -59,8 +59,8 @@ function useCountUp(target: number, active: boolean, duration = 900) {
   useEffect(() => {
     if (!active) return
     if (reduce) {
-      setValue(target)
-      return
+      const id = requestAnimationFrame(() => setValue(target))
+      return () => cancelAnimationFrame(id)
     }
     let raf = 0
     const start = performance.now()
@@ -195,18 +195,24 @@ export function JobPostCell() {
 
   useEffect(() => {
     if (!active || reduce) return
-    setTyped("")
-    setShowTags(false)
     let i = 0
-    const id = setInterval(() => {
-      i += 1
-      setTyped(brief.slice(0, i))
-      if (i >= brief.length) {
-        clearInterval(id)
-        setShowTags(true)
-      }
-    }, 32)
-    return () => clearInterval(id)
+    let intervalId: ReturnType<typeof setInterval> | undefined
+    const startId = requestAnimationFrame(() => {
+      setTyped("")
+      setShowTags(false)
+      intervalId = setInterval(() => {
+        i += 1
+        setTyped(brief.slice(0, i))
+        if (i >= brief.length) {
+          if (intervalId) clearInterval(intervalId)
+          setShowTags(true)
+        }
+      }, 32)
+    })
+    return () => {
+      cancelAnimationFrame(startId)
+      if (intervalId) clearInterval(intervalId)
+    }
   }, [active, reduce, brief])
 
   return (

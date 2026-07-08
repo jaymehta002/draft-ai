@@ -11,6 +11,7 @@ export function recommendTone(
   fallbackTone = "professional",
   _postIndustry?: string | null
 ): ToneRecommendation {
+  void _postIndustry
   const avgRate = metrics.replyRate
 
   const best = metrics.toneInsights.find((t) => t.sent >= 5 && t.rate > avgRate * 1.5)

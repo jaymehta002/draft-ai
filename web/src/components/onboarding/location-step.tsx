@@ -35,8 +35,12 @@ export function LocationStep({
     if (debounceRef.current) clearTimeout(debounceRef.current)
 
     if (query.trim().length < 2) {
-      setSuggestions([])
-      return
+      debounceRef.current = setTimeout(() => {
+        setSuggestions([])
+      }, 0)
+      return () => {
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+      }
     }
 
     debounceRef.current = setTimeout(async () => {

@@ -191,7 +191,10 @@ function OnboardingContent() {
 
   useEffect(() => {
     if (flowPhase === "steps" && currentStep === "skills" && !skillsFetched) {
-      fetchSkillSuggestions()
+      const id = requestAnimationFrame(() => {
+        void fetchSkillSuggestions()
+      })
+      return () => cancelAnimationFrame(id)
     }
   }, [flowPhase, currentStep, skillsFetched, fetchSkillSuggestions])
 

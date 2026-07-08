@@ -232,13 +232,24 @@ const fade = {
   transition: { duration: 0.25 },
 }
 
+type ConnectResponse = {
+  code?: string
+  error?: string
+  email?: string
+  state?: string
+  apiKey?: string
+  name?: string
+}
+
 function ExtensionConnectContent() {
   const { data: session, status } = useSession()
   const searchParams = useSearchParams()
   const rawState = searchParams.get("state")
   const state = rawState && rawState.trim().length > 0 ? rawState : null
 
-  const [phase, setPhase] = useState<ConnectPhase>({ step: "checking" })
+  const [phase, setPhase] = useState<ConnectPhase>(() =>
+    state ? { step: "checking" } : { step: "missing-state" }
+  )
   const [isSlow, setIsSlow] = useState(false)
 
   const hasStartedRef = useRef(false)
@@ -249,6 +260,7 @@ function ExtensionConnectContent() {
     async (currentState: string) => {
       const attempt = attemptRef.current + 1
       attemptRef.current = attempt
+      const sessionUserEmail = session?.user?.email
 
       setIsSlow(false)
       setPhase({ step: "connecting", attempt })
@@ -289,9 +301,9 @@ function ExtensionConnectContent() {
           signal: controller.signal,
         })
 
-        let data: any = null
+        let data: ConnectResponse | null = null
         try {
-          data = await response.json()
+          data = (await response.json()) as ConnectResponse
         } catch {
           data = null
         }
@@ -299,7 +311,7 @@ function ExtensionConnectContent() {
         if (!response.ok) {
           const info = classifyError(response.status, data?.code, data?.error)
           if (info.kind === "already-connected") {
-            setPhase({ step: "success", email: data?.email || session?.user?.email || "" })
+            setPhase({ step: "success", email: data?.email || sessionUserEmail || "" })
             return
           }
           setPhase({ step: "error", info: { ...info, message: data?.error || info.message }, attempt })
@@ -326,15 +338,18 @@ function ExtensionConnectContent() {
           // Connection still succeeded server-side even if postMessage throws.
         }
 
-        setPhase({ step: "success", email: data?.email || session?.user?.email || "" })
-      } catch (err: any) {
-        if (err?.offline) {
+        setPhase({ step: "success", email: data?.email || sessionUserEmail || "" })
+      } catch (err: unknown) {
+        const offline =
+          typeof err === "object" && err !== null && "offline" in err && Boolean((err as { offline?: boolean }).offline)
+        const name = err instanceof Error ? err.name : undefined
+        if (offline) {
           setPhase({
             step: "error",
             info: { kind: "offline", title: "You're offline", message: "Reconnect and try again.", retryable: true },
             attempt,
           })
-        } else if (err?.name === "AbortError" || controller.signal.aborted) {
+        } else if (name === "AbortError" || controller.signal.aborted) {
           setPhase({
             step: "error",
             info: {
@@ -358,23 +373,23 @@ function ExtensionConnectContent() {
         if (abortRef.current === controller) abortRef.current = null
       }
     },
-    [session?.user?.email]
+    [session]
   )
 
   useEffect(() => {
-    if (!state) {
-      setPhase({ step: "missing-state" })
-      return
-    }
+    if (!state) return
     if (status === "loading") return
     if (status === "unauthenticated") {
-      setPhase({ step: "redirecting" })
-      signIn("google", { callbackUrl: `/extension/connect?state=${encodeURIComponent(state)}` })
-      return
+      // External redirect — defer so we don't sync-setState in the effect body.
+      const frame = requestAnimationFrame(() => {
+        setPhase({ step: "redirecting" })
+        signIn("google", { callbackUrl: `/extension/connect?state=${encodeURIComponent(state)}` })
+      })
+      return () => cancelAnimationFrame(frame)
     }
     if (status === "authenticated" && !hasStartedRef.current) {
       hasStartedRef.current = true
-      runConnect(state)
+      void runConnect(state)
     }
   }, [state, status, runConnect])
 

@@ -29,7 +29,7 @@ export function PreferencesSection({
 }) {
   const [tone, setTone] = useState(outreachTone || "professional")
   const [length, setLength] = useState(draftLength || "medium")
-  const [language, setLanguage] = useState(outreachLanguage || "en")
+  const [language] = useState(outreachLanguage || "en")
   const [saved, setSaved] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 

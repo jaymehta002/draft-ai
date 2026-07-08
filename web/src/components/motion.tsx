@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useRef } from "react"
 import Link from "next/link"
-import { motion, useInView, type HTMLMotionProps } from "framer-motion"
+import { motion, useInView, useReducedMotion, type HTMLMotionProps } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { EASE_OUT, EASE_SPRING, FLOAT_TRANSITION, REVEAL_ANIMATE, REVEAL_INITIAL, STAGGER } from "@/lib/motion-tokens"
@@ -117,11 +117,7 @@ export function FloatingCard({
   className?: string
   disabled?: boolean
 }) {
-  const [reduceMotion, setReduceMotion] = useState(false)
-
-  useEffect(() => {
-    setReduceMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches)
-  }, [])
+  const reduceMotion = useReducedMotion()
 
   if (disabled || reduceMotion) {
     return <div className={className}>{children}</div>
@@ -154,11 +150,7 @@ export function MagneticButton({
   variant?: "default" | "outline" | "ghost"
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [reduceMotion, setReduceMotion] = useState(false)
-
-  useEffect(() => {
-    setReduceMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches)
-  }, [])
+  const reduceMotion = useReducedMotion()
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (reduceMotion || !ref.current) return

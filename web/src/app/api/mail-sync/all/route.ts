@@ -44,7 +44,8 @@ export async function GET(req: Request) {
   const summary = results.map((r, i) => {
     const userId = userIds[i]
     if (r.status === "fulfilled") {
-      const { userId: _uid, ...rest } = r.value
+      const rest = { ...r.value }
+      delete (rest as { userId?: string }).userId
       return { userId, status: r.status, ...rest }
     }
     return { userId, status: r.status, error: String(r.reason) }

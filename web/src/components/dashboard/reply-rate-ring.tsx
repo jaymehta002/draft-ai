@@ -11,7 +11,6 @@ type ReplyRateRingProps = {
 export function ReplyRateRing({ rate, label = "Reply rate", sublabel }: ReplyRateRingProps) {
   const [animated, setAnimated] = useState(0)
   const circumference = 2 * Math.PI * 54
-  const targetOffset = circumference - (Math.min(rate, 100) / 100) * circumference
 
   useEffect(() => {
     const start = performance.now()

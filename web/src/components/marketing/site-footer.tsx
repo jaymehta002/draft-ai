@@ -26,12 +26,13 @@ export function SiteFooter() {
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-6 px-4 py-10 sm:flex-row sm:px-6 lg:px-8">
         <DraftAIBrand subtitle="Outreach Studio" href="/" />
         <nav className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-          <a href="/#how" className="transition-colors duration-200 hover:text-foreground">
+          <Link href="/#how" className="transition-colors duration-200 hover:text-foreground">
             How it works
-          </a>
-          <a href="/#features" className="transition-colors duration-200 hover:text-foreground">
+          </Link>
+          <Link href="/#features" className="transition-colors duration-200 hover:text-foreground">
             Features
-          </a>
+          </Link>
+
           <Link href="/pricing" className="transition-colors duration-200 hover:text-foreground">
             Pricing
           </Link>

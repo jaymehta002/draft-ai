@@ -201,6 +201,7 @@ export async function checkMilestones(
   userId: string,
   _event?: ActivityType
 ): Promise<MilestoneId[]> {
+  void _event
   const [engagement, draftCount, sentCount, replyCount, stats] = await Promise.all([
     prisma.userEngagement.findUnique({ where: { userId } }),
     prisma.postDraft.count({ where: { userId } }),

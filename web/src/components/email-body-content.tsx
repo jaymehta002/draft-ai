@@ -117,7 +117,6 @@ function QuotedSection({
 
 export function EmailBodyContent({
   body,
-  variant = "default",
   linkHints,
 }: {
   body: string
