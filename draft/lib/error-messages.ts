@@ -3,6 +3,7 @@ export type ExtensionErrorCode =
   | "not_signed_in"
   | "session_expired"
   | "invalid_state"
+  | "expired_state"
   | "rate_limited"
   | "offline_queued"
   | "limit_reached"
@@ -28,6 +29,7 @@ const MESSAGES: Record<ExtensionErrorCode, (p?: ExtensionErrorMessageParams) => 
   not_signed_in: () => "Sign in from the extension popup to continue.",
   session_expired: () => "Your session expired. Sign in again from the extension popup.",
   invalid_state: () => "This connection link was already used or has timed out. Start again from the extension.",
+  expired_state: () => "This connection link was already used or has timed out. Start again from the extension.",
   rate_limited: (p) =>
     typeof p?.retryAfterSeconds === "number" && p.retryAfterSeconds > 0
       ? `Too many requests right now. Try again in ${p.retryAfterSeconds}s.`

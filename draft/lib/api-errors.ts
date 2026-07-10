@@ -12,7 +12,7 @@ export type ExtensionApiErrorPayload = {
 export async function readApiError(res: Response): Promise<ExtensionApiErrorPayload> {
   try {
     const json = (await res.json()) as ExtensionApiErrorPayload
-    return json ?? {}
+    return json
   } catch {
     return {}
   }
@@ -42,9 +42,11 @@ export function mapApiErrorToExtensionCode(
     return { code: "session_expired" }
   }
 
+  if (payload.code === "invalid_state") return { code: "invalid_state" }
+  if (payload.code === "expired_state") return { code: "expired_state" }
   if (payload.code === "invalid_recipient_email") return { code: "invalid_recipient_email" }
   if (payload.code === "email_send_unavailable") return { code: "email_send_unavailable" }
+  if (payload.code === "gmail_not_connected") return { code: "email_send_unavailable" }
 
   return { code: fallback }
 }
-

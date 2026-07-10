@@ -43,7 +43,7 @@ async function syncSentPosts() {
   }
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+function bootstrapExtension() {
   migrateLegacyDraft()
   verifyAuthState().then(() => {
     syncSentPosts()
@@ -53,19 +53,10 @@ chrome.runtime.onInstalled.addListener(() => {
   })
   setupSidePanel()
   setupOfflineAlarm()
-})
+}
 
-chrome.runtime.onStartup.addListener(() => {
-  migrateLegacyDraft()
-  verifyAuthState().then(() => {
-    syncSentPosts()
-    sendHeartbeat()
-    pollEngagementAnalytics()
-    processOfflineQueue()
-  })
-  setupSidePanel()
-  setupOfflineAlarm()
-})
+chrome.runtime.onInstalled.addListener(bootstrapExtension)
+chrome.runtime.onStartup.addListener(bootstrapExtension)
 
 function setupOfflineAlarm() {
   if (typeof chrome === "undefined" || !chrome.alarms?.create) return
@@ -86,112 +77,120 @@ function setupSidePanel() {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false })
 }
 
-async function openSidePanelForTab(tabId?: number) {
-  if (!tabId || typeof chrome === "undefined" || !chrome.sidePanel?.open) return
+async function openSidePanelForTab(tabId?: number): Promise<boolean> {
+  if (!tabId || typeof chrome === "undefined" || !chrome.sidePanel?.open) return false
   try {
     await chrome.sidePanel.open({ tabId })
+    return true
   } catch (error) {
     console.error("Failed to open side panel:", error)
     captureExtensionError(error, "openSidePanel")
+    return false
   }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const respondWithError = (error: unknown) =>
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : getExtensionErrorMessage("unknown"),
+    })
+
   if (message.type === "DRAFT_PITCH") {
     handleDraftPitchFlow(message.payload, sender.tab?.id)
       .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "SEND_EMAIL") {
     handleSendEmail(message.payload)
       .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "RECORD_OUTREACH") {
     handleRecordOutreach(message.payload)
       .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "OPEN_SIDE_PANEL") {
     openSidePanelForTab(sender.tab?.id)
-      .then(() => sendResponse({ success: true }))
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .then((opened) => sendResponse({ success: opened }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "SAVE_AUTH") {
     handleSaveAuth(message.payload)
       .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "GET_AUTH") {
     verifyAuthState()
       .then((auth) => sendResponse({ success: true, auth }))
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "START_CONNECT") {
     handleStartConnect()
       .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "DISCONNECT") {
     clearAuthState()
       .then(() => sendResponse({ success: true }))
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "SYNC_SENT_POSTS") {
     syncSentPosts()
       .then((records) => sendResponse({ success: true, records }))
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "GET_SENT_POSTS") {
     getSentPosts()
       .then((map) => sendResponse({ success: true, map }))
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "MARK_POST_SENT") {
     markPostSent(message.payload.postId, message.payload.status)
       .then(() => sendResponse({ success: true }))
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "SEND_HEARTBEAT") {
     sendHeartbeat()
       .then(() => sendResponse({ success: true }))
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "GENERATE_VARIANT") {
     handleGenerateVariant(message.payload)
       .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 
   if (message.type === "MARK_REPLIED") {
     handleMarkReplied(message.payload)
       .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }))
+      .catch(respondWithError)
     return true
   }
 })
@@ -226,7 +225,7 @@ async function pollEngagementAnalytics() {
     if (!response.ok) return
 
     const data = await response.json()
-    const stored = await chrome.storage.local.get(["lastKnownReplied", "pendingCelebrations"])
+    const stored = await chrome.storage.local.get(["lastKnownReplied"])
     const lastKnown = (stored.lastKnownReplied as number) ?? 0
     const totalReplied = data.totalReplied ?? 0
 
@@ -254,7 +253,7 @@ async function processOfflineQueue() {
   try {
     if (item.type === "send-email") {
       await handleSendEmail(item.payload)
-    } else if (item.type === "record-outreach" || item.type === "mark-copied") {
+    } else if (item.type === "record-outreach") {
       await handleRecordOutreach(item.payload)
     }
   } catch {
@@ -262,8 +261,8 @@ async function processOfflineQueue() {
   }
 
   const remaining = await getOfflineQueue()
-  if (remaining.length > 0) {
-    setTimeout(() => processOfflineQueue(), 1000)
+  if (remaining.length > 0 && chrome.alarms?.create) {
+    chrome.alarms.create("offline-queue-retry", { delayInMinutes: 1 })
   }
 }
 
@@ -463,11 +462,25 @@ async function handleDraftPitch(payload: unknown) {
       return { success: false, error: getExtensionErrorMessage(mapped.code, mapped.params) }
     }
 
+    const body = data as {
+      data?: {
+        detected_name: string
+        is_hiring_relevant: boolean
+        match_score: number
+        match_reason: string
+        fit_highlights: string[]
+        action_mode: "EMAIL" | "DM"
+        outreach_payload: { subject_line: string | null; message_content: string }
+      }
+      draftId?: string
+      cached?: boolean
+    }
+
     return {
       success: true,
-      data: (data as unknown as { data?: unknown }).data,
-      draftId: (data as unknown as { draftId?: string }).draftId,
-      cached: (data as unknown as { cached?: boolean }).cached,
+      data: body.data,
+      draftId: body.draftId,
+      cached: body.cached,
     }
   } catch (error: unknown) {
     const message =
@@ -649,4 +662,4 @@ async function handleMarkReplied(payload: { outreachId: string }) {
   }
 }
 
-setupSidePanel()
+bootstrapExtension()

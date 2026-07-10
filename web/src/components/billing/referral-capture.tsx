@@ -39,14 +39,16 @@ export function ReferralRedeemer() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code }),
     })
-      .catch(() => {})
-      .finally(() => {
-        try {
-          localStorage.removeItem(PENDING_REF_KEY)
-        } catch {
-          // ignore
+      .then((res) => {
+        if (res.ok) {
+          try {
+            localStorage.removeItem(PENDING_REF_KEY)
+          } catch {
+            // ignore
+          }
         }
       })
+      .catch(() => {})
   }, [])
   return null
 }

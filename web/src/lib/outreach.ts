@@ -17,6 +17,17 @@ export function getProfileVersion(updatedAt: Date): string {
   return createHash("sha256").update(updatedAt.toISOString()).digest("hex").slice(0, 16)
 }
 
+export function parseDraftResult(raw: unknown): DraftResult | null {
+  if (!raw || typeof raw !== "object") return null
+  const r = raw as Record<string, unknown>
+  const payload = r.outreach_payload
+  if (!payload || typeof payload !== "object") return null
+  const p = payload as Record<string, unknown>
+  if (typeof p.message_content !== "string") return null
+  if (r.action_mode !== "EMAIL" && r.action_mode !== "DM") return null
+  return normalizeDraftResult(raw as DraftResult)
+}
+
 export function normalizeDraftResult(result: DraftResult): DraftResult {
   const numericMatchScore =
     typeof result.match_score === "number" && Number.isFinite(result.match_score)
@@ -50,7 +61,10 @@ export function draftResultToResponse(draft: {
   message: string
   draftResponse: unknown
 }, cached: boolean) {
-  const stored = normalizeDraftResult(draft.draftResponse as DraftResult)
+  const stored = parseDraftResult(draft.draftResponse)
+  if (!stored) {
+    throw new Error("Invalid stored draft response")
+  }
   return {
     success: true,
     cached,

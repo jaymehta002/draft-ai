@@ -114,8 +114,13 @@ function OnboardingContent() {
       return
     }
 
-    if (status === "authenticated") {
-      getOnboardingData().then((data) => {
+    if (status !== "authenticated") return
+
+    let cancelled = false
+
+    getOnboardingData()
+      .then((data) => {
+        if (cancelled) return
         if (data?.onboardingComplete) {
           router.replace("/dashboard")
           return
@@ -130,6 +135,15 @@ function OnboardingContent() {
         }
         setLoading(false)
       })
+      .catch(() => {
+        if (!cancelled) {
+          setError("We couldn't load your profile. Please try again.")
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
     }
   }, [status, router, startStepFlow])
 
@@ -168,11 +182,17 @@ function OnboardingContent() {
 
       if (res.ok) {
         const json = await res.json()
-        const confirmed = [
-          ...new Set([...existing, ...(json.data.confirmed as string[])]),
-        ]
+        const confirmedRaw = json?.data?.confirmed
+        const suggestedRaw = json?.data?.suggested
+        const confirmedList = Array.isArray(confirmedRaw)
+          ? confirmedRaw.filter((s): s is string => typeof s === "string")
+          : []
+        const suggestedList = Array.isArray(suggestedRaw)
+          ? suggestedRaw.filter((s): s is string => typeof s === "string")
+          : []
+        const confirmed = [...new Set([...existing, ...confirmedList])]
         setSkillConfirmed(confirmed)
-        setSkillSuggested(json.data.suggested as string[])
+        setSkillSuggested(suggestedList)
         setProfile((prev) => ({ ...prev, skills: confirmed.join(", ") }))
       } else if (existing.length) {
         setSkillConfirmed(existing)

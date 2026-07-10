@@ -22,7 +22,7 @@ async function resolveUserId(req: Request): Promise<string | null> {
 
   const authHeader = req.headers.get("authorization")
   if (authHeader?.startsWith("Bearer ")) {
-    const auth = await authenticateBearerRequest(req, { limit: 10, windowMs: 60 * 60 * 1000 })
+    const auth = await authenticateBearerRequest(req, { scope: "follow-up-draft", limit: 10, windowMs: 60 * 60 * 1000 })
     if (!auth.error && auth.apiKey) return auth.apiKey.userId
   }
 

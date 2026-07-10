@@ -4,8 +4,12 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { openai, OPENAI_MODEL } from "@/lib/openai"
 import { buildDraftSystemPrompt, SAMPLE_POST_TEXT, type DraftProfileContext } from "@/lib/draft-prompt"
-import { normalizeDraftResult, type DraftResult } from "@/lib/outreach"
+import { parseDraftResult } from "@/lib/outreach"
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+import { getWebErrorMessage } from "@/lib/error-messages"
+
+const MAX_POST_TEXT_LEN = 8000
+const MAX_BIO_HINT_LEN = 2000
 
 function clientIp(req: Request): string {
   return (
@@ -17,8 +21,9 @@ function clientIp(req: Request): string {
 
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession(authOptions)
     const limited = rateLimit({
-      key: `try-draft:${clientIp(req)}`,
+      key: session?.user?.email ? `try-draft:user:${session.user.email}` : `try-draft:${clientIp(req)}`,
       limit: 5,
       windowMs: 60 * 60 * 1000,
     })
@@ -26,10 +31,9 @@ export async function POST(req: Request) {
       return rateLimitResponse(limited.resetAt)
     }
 
-    const session = await getServerSession(authOptions)
     const body = await req.json()
-    const postText = (body.postText as string)?.trim() || SAMPLE_POST_TEXT
-    const bioHint = (body.bioHint as string)?.trim() || ""
+    const postText = ((body.postText as string)?.trim() || SAMPLE_POST_TEXT).slice(0, MAX_POST_TEXT_LEN)
+    const bioHint = ((body.bioHint as string)?.trim() || "").slice(0, MAX_BIO_HINT_LEN)
 
     let profileContext: DraftProfileContext = {
       fullName: bioHint.split("—")[0]?.trim() || "Job seeker",
@@ -103,13 +107,37 @@ export async function POST(req: Request) {
         {
           success: false,
           code: "ai_no_response",
-          error: "Draft AI didn’t get a response from the AI model. Please try again.",
+          error: getWebErrorMessage("ai_no_response"),
         },
         { status: 502 }
       )
     }
 
-    const result = normalizeDraftResult(JSON.parse(responseContent) as DraftResult)
+    let parsedRaw: unknown
+    try {
+      parsedRaw = JSON.parse(responseContent)
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "ai_invalid_response",
+          error: getWebErrorMessage("ai_no_response"),
+        },
+        { status: 502 }
+      )
+    }
+
+    const result = parseDraftResult(parsedRaw)
+    if (!result) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "ai_invalid_response",
+          error: getWebErrorMessage("ai_no_response"),
+        },
+        { status: 502 }
+      )
+    }
 
     return NextResponse.json({
       success: true,
@@ -129,7 +157,7 @@ export async function POST(req: Request) {
       {
         success: false,
         code: "server_error",
-        error: "Draft AI ran into a problem on our end. Please try again.",
+        error: getWebErrorMessage("draft_generate_failed"),
       },
       { status: 500 }
     )

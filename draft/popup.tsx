@@ -322,7 +322,7 @@ function IndexPopup() {
   const fetchAnalytics = async (authState: AuthState, force = false) => {
     const now = Date.now()
 
-    if (!force && analytics && (now - lastFetchTime.current) < CACHE_DURATION) {
+    if (!force && now - lastFetchTime.current < CACHE_DURATION) {
       return
     }
 

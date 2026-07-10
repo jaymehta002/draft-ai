@@ -43,19 +43,22 @@ export function LocationStep({
       }
     }
 
+    let cancelled = false
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
       try {
         const results = await searchLocations(query)
+        if (cancelled) return
         setSuggestions(results)
         setOpen(results.length > 0)
         setHighlightedIndex(0)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }, 300)
 
     return () => {
+      cancelled = true
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [query])

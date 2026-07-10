@@ -7,17 +7,27 @@ export type OfflineQueueItem = {
   createdAt: number
 }
 
+let queueLock = Promise.resolve()
+
+function withQueueLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = queueLock.then(fn, fn)
+  queueLock = next.catch(() => {})
+  return next
+}
+
 export async function enqueueOfflineAction(item: Omit<OfflineQueueItem, "createdAt">) {
-  const result = await chrome.storage.local.get(QUEUE_KEY)
-  const queue: OfflineQueueItem[] = Array.isArray(result[QUEUE_KEY]) ? result[QUEUE_KEY] : []
+  return withQueueLock(async () => {
+    const result = await chrome.storage.local.get(QUEUE_KEY)
+    const queue: OfflineQueueItem[] = Array.isArray(result[QUEUE_KEY]) ? result[QUEUE_KEY] : []
 
-  const entry: OfflineQueueItem = { ...item, createdAt: Date.now() }
-  const next = [...queue, entry].slice(-MAX_QUEUE_SIZE)
+    const entry: OfflineQueueItem = { ...item, createdAt: Date.now() }
+    const next = [...queue, entry].slice(-MAX_QUEUE_SIZE)
 
-  await chrome.storage.local.set({ [QUEUE_KEY]: next })
-  await updateQueueBadge(next.length)
+    await chrome.storage.local.set({ [QUEUE_KEY]: next })
+    await updateQueueBadge(next.length)
 
-  return next.length
+    return next.length
+  })
 }
 
 export async function getOfflineQueue(): Promise<OfflineQueueItem[]> {
@@ -25,19 +35,17 @@ export async function getOfflineQueue(): Promise<OfflineQueueItem[]> {
   return Array.isArray(result[QUEUE_KEY]) ? result[QUEUE_KEY] : []
 }
 
-export async function clearOfflineQueue() {
-  await chrome.storage.local.set({ [QUEUE_KEY]: [] })
-  await updateQueueBadge(0)
-}
-
 export async function shiftOfflineQueue(): Promise<OfflineQueueItem | null> {
-  const queue = await getOfflineQueue()
-  if (queue.length === 0) return null
+  return withQueueLock(async () => {
+    const result = await chrome.storage.local.get(QUEUE_KEY)
+    const queue: OfflineQueueItem[] = Array.isArray(result[QUEUE_KEY]) ? result[QUEUE_KEY] : []
+    if (queue.length === 0) return null
 
-  const [first, ...rest] = queue
-  await chrome.storage.local.set({ [QUEUE_KEY]: rest })
-  await updateQueueBadge(rest.length)
-  return first
+    const [first, ...rest] = queue
+    await chrome.storage.local.set({ [QUEUE_KEY]: rest })
+    await updateQueueBadge(rest.length)
+    return first
+  })
 }
 
 async function updateQueueBadge(count: number) {
@@ -51,6 +59,7 @@ async function updateQueueBadge(count: number) {
 }
 
 export function isRetryableFetchError(error: unknown, response?: Response) {
+  if (response?.status === 429) return true
   if (response && response.status >= 500) return true
   if (error instanceof TypeError) return true
   return false

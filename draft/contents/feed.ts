@@ -12,7 +12,6 @@ import {
   isExtensionContextValid,
   onLocalStorageChanged,
   sendRuntimeMessage,
-  setLocalStorage,
   showContextInvalidBanner,
 } from "~lib/extension-context"
 import {
@@ -516,7 +515,8 @@ const PLATFORMS: Record<"X" | "LINKEDIN", PlatformConfig> = {
   },
 }
 
-let activePopover: HTMLElement | null = null
+let activeOverlay: HTMLElement | null = null
+let overlayCleanup: (() => void) | null = null
 
 const injectCSS = () => {
   if (!document.getElementById("recruit-pitch-style")) {
@@ -555,7 +555,6 @@ async function resolvePostId(
   return platform.getPostId(post) || (await fallbackPostId(text, name, platform.id))
 }
 
-let activeOverlay: HTMLElement | null = null
 let sentPostsCache: SentPostsMap = {}
 let domObserver: MutationObserver | null = null
 let removeStorageListener: (() => void) | null = null
@@ -645,13 +644,19 @@ const bindAction = (el: Element | null, handler: () => void | Promise<void>) => 
 }
 
 const closePopover = () => {
+  overlayCleanup?.()
+  overlayCleanup = null
+  if (popoverPersistTimer) {
+    clearTimeout(popoverPersistTimer)
+    popoverPersistTimer = null
+  }
   activeOverlay?.remove()
   activeOverlay = null
 }
 
 const positionPopover = (anchor: HTMLElement, popover: HTMLElement) => {
   const rect = anchor.getBoundingClientRect()
-  const popoverWidth = 340
+  const popoverWidth = 360
   const margin = 8
 
   let left = rect.left
@@ -679,7 +684,7 @@ const renderPopoverLoading = (popover: HTMLElement, recipientName: string) => {
     </div>
     <div class="rp-popover__loading">
       <div class="rp-popover__spinner"></div>
-      <span>Writing for ${recipientName || "this post"}...</span>
+      <span>Writing for ${rpEscapeHtml(recipientName || "this post")}...</span>
     </div>
     <p class="rp-popover__hint">Full preview opening in side panel</p>
   `
@@ -907,12 +912,10 @@ const openPopover = (anchor: HTMLElement, recipientName: string, showLoading = t
   window.addEventListener("scroll", onScroll, true)
   window.addEventListener("resize", onResize)
 
-  const cleanup = () => {
+  overlayCleanup = () => {
     window.removeEventListener("scroll", onScroll, true)
     window.removeEventListener("resize", onResize)
   }
-
-  overlay.addEventListener("remove", cleanup)
 
   return popover
 }
@@ -946,9 +949,7 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
     const minChars = platform.id === "LINKEDIN" ? 60 : 20
     if (normalizePostText(text).length < minChars) {
       throw new Error(
-        platform.id === "LINKEDIN"
-          ? "Couldn't read enough of this post. Click “See more” to expand it, then click Draft again."
-          : "Couldn't read enough of this post to draft a message."
+        getExtensionErrorMessage("insufficient_post_text", { platform: platform.id })
       )
     }
 
@@ -989,6 +990,10 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
       throw new Error(response.error || "Failed to draft pitch")
     }
 
+    if (!response.data) {
+      throw new Error(getExtensionErrorMessage("draft_failed"))
+    }
+
     const {
       action_mode,
       outreach_payload,
@@ -997,7 +1002,7 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
       match_score,
       match_reason,
       fit_highlights,
-    } = response.data!
+    } = response.data
     const displayRecipientName = emailRecipientName || name || "Unknown"
     const draft: DraftPreview = {
       status: "ready",
@@ -1111,7 +1116,15 @@ const injectButton = async (post: HTMLElement, platform: PlatformConfig) => {
   appendDraftButton(injectionTarget, button)
 }
 
+let injectionRunning: Promise<void> | null = null
+
 const runInjection = async (platform: PlatformConfig) => {
+  if (injectionRunning) {
+    await injectionRunning
+    return
+  }
+
+  injectionRunning = (async () => {
   if (!isExtensionContextValid()) return
 
   const auth = await getLocalStorage<Record<string, string | boolean | undefined>>([
@@ -1168,6 +1181,13 @@ const runInjection = async (platform: PlatformConfig) => {
   injectRetryTimers = [1000, 3000, 8000, 15000, 30000].map((delay) =>
     window.setTimeout(injectAll, delay)
   )
+  })()
+
+  try {
+    await injectionRunning
+  } finally {
+    injectionRunning = null
+  }
 }
 
 const startObserver = () => {

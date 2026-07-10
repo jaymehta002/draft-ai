@@ -1,44 +1,30 @@
 import { NextResponse } from "next/server"
 import { authenticateBearerRequest } from "@/lib/bearer-auth"
 import { prisma } from "@/lib/prisma"
-import {
-  draftResultToResponse,
-  getProfileVersion,
-  normalizeDraftResult,
-  type DraftResult,
-} from "@/lib/outreach"
+import { draftResultToResponse, getProfileVersion, parseDraftResult } from "@/lib/outreach"
 import { openai, OPENAI_MODEL } from "@/lib/openai"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
+import { normalizeEmailGreeting } from "@/lib/email-greeting"
 import { incrementDraftStats } from "@/lib/user-stats"
-import { checkEntitlement, incrementUsage, limitReachedResponse } from "@/lib/entitlements"
+import { limitReachedResponse, releaseUsage, reserveUsage } from "@/lib/entitlements"
 import { recordActivity } from "@/lib/engagement"
 import { buildDraftSystemPrompt } from "@/lib/draft-prompt"
 import { classifyIndustry } from "@/lib/industry-classifier"
-
-function normalizeEmailGreeting(message: string, recipientName: string | null) {
-  const cleaned = message.trim()
-  const greetingName = recipientName?.split(/\s+/)[0] || null
-  const greetingLine = greetingName ? `Hi ${greetingName},` : "Hello,"
-
-  if (!cleaned) return greetingLine
-
-  const lines = cleaned.split(/\r?\n/)
-  if (/^(hi|hello|dear|hey)\b/i.test(lines[0]?.trim() || "")) {
-    lines[0] = greetingLine
-    return lines.join("\n")
-  }
-
-  return `${greetingLine}\n\n${cleaned}`
-}
+import { getWebErrorMessage } from "@/lib/error-messages"
 
 export async function POST(req: Request) {
+  let reservedUserId: string | null = null
   try {
     const auth = await authenticateBearerRequest(req, {
+      scope: "match-job",
       limit: 30,
       windowMs: 60 * 60 * 1000,
     })
     if (auth.error) return auth.error
-    const apiKey = auth.apiKey!
+    const apiKey = auth.apiKey
+    if (!apiKey) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
     const profile = apiKey.user.candidateProfile
     if (!profile?.onboardingComplete) {
@@ -114,9 +100,9 @@ export async function POST(req: Request) {
       return NextResponse.json(draftResultToResponse(existingDraft, true))
     }
 
-    // Cache miss → this will hit OpenAI. Enforce the draft cap *before* spending.
-    const draftCheck = await checkEntitlement(apiKey.userId, "draft")
-    if (!draftCheck.allowed) return limitReachedResponse(draftCheck)
+    const draftReserve = await reserveUsage(apiKey.userId, "draft")
+    if (!draftReserve.reserved) return limitReachedResponse(draftReserve.check)
+    reservedUserId = apiKey.userId
 
     const industryTag = classifyIndustry({
       postText: text,
@@ -145,23 +131,45 @@ export async function POST(req: Request) {
       model: OPENAI_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Please draft the outreach message. hasEmail: ${hasEmail}` }
+        { role: "user", content: `Please draft the outreach message. hasEmail: ${resolvedHasEmail}` }
       ],
       response_format: { type: "json_object" }
     })
 
     const responseContent = completion.choices[0]?.message?.content
     if (!responseContent) {
+      await releaseUsage(apiKey.userId, "draft")
+      reservedUserId = null
       return NextResponse.json(
-        { success: false, code: "ai_no_response", error: "Draft AI didn’t get a response from the AI model. Please try again." },
+        { success: false, code: "ai_no_response", error: getWebErrorMessage("ai_no_response") },
         { status: 502 }
       )
     }
 
-    const result = normalizeDraftResult(JSON.parse(responseContent) as DraftResult)
+    let parsedRaw: unknown
+    try {
+      parsedRaw = JSON.parse(responseContent)
+    } catch {
+      await releaseUsage(apiKey.userId, "draft")
+      reservedUserId = null
+      return NextResponse.json(
+        { success: false, code: "ai_invalid_response", error: getWebErrorMessage("ai_no_response") },
+        { status: 502 }
+      )
+    }
+
+    const result = parseDraftResult(parsedRaw)
+    if (!result) {
+      await releaseUsage(apiKey.userId, "draft")
+      reservedUserId = null
+      return NextResponse.json(
+        { success: false, code: "ai_invalid_response", error: getWebErrorMessage("ai_no_response") },
+        { status: 502 }
+      )
+    }
 
     if (resolvedHasEmail) result.action_mode = "EMAIL"
-    if (!resolvedHasEmail) result.action_mode = "DM"
+    else result.action_mode = "DM"
 
     const actionMode = result.action_mode
     const subject = result.outreach_payload.subject_line
@@ -214,19 +222,21 @@ export async function POST(req: Request) {
       },
     })
 
-    // Increment draft stats only on create (not update)
     if (savedDraft.createdAt.getTime() === savedDraft.updatedAt.getTime()) {
       await incrementDraftStats(apiKey.userId)
-      await incrementUsage(apiKey.userId, "draft")
       await recordActivity(apiKey.userId, "draft")
     }
 
+    reservedUserId = null
     return NextResponse.json(draftResultToResponse(savedDraft, false))
 
   } catch (error: unknown) {
+    if (reservedUserId) {
+      await releaseUsage(reservedUserId, "draft").catch(() => {})
+    }
     console.error("Match Job Error:", error)
     return NextResponse.json(
-      { success: false, code: "server_error", error: "Draft AI ran into a problem on our end. Please try again." },
+      { success: false, code: "server_error", error: getWebErrorMessage("draft_generate_failed") },
       { status: 500 }
     )
   }

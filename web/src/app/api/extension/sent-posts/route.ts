@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 
 export async function GET(req: Request) {
   try {
-    const auth = await authenticateBearerRequest(req, { limit: 120, windowMs: 60 * 60 * 1000 })
+    const auth = await authenticateBearerRequest(req, { scope: "extension-sent-posts", limit: 120, windowMs: 60 * 60 * 1000 })
     if (auth.error) return auth.error
     const apiKey = auth.apiKey!
 

@@ -68,6 +68,14 @@ export const emptyDraft = (): DraftPreview => ({
   updatedAt: Date.now(),
 })
 
+let draftsLock = Promise.resolve()
+
+function withDraftsLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = draftsLock.then(fn, fn)
+  draftsLock = next.catch(() => {})
+  return next
+}
+
 export async function getDraftsMap(): Promise<DraftsByPostId> {
   const result = await chrome.storage.local.get([DRAFTS_BY_POST_KEY, DRAFT_STORAGE_KEY])
   const map = (result[DRAFTS_BY_POST_KEY] as DraftsByPostId | undefined) ?? {}
@@ -75,10 +83,8 @@ export async function getDraftsMap(): Promise<DraftsByPostId> {
   const legacy = result[DRAFT_STORAGE_KEY] as DraftPreview | undefined
   if (legacy?.postId && !map[legacy.postId]) {
     map[legacy.postId] = legacy
-    await chrome.storage.local.set({
-      [DRAFTS_BY_POST_KEY]: map,
-      [DRAFT_STORAGE_KEY]: undefined,
-    })
+    await chrome.storage.local.set({ [DRAFTS_BY_POST_KEY]: map })
+    await chrome.storage.local.remove(DRAFT_STORAGE_KEY)
   }
 
   return map
@@ -100,13 +106,25 @@ export async function getActiveDraft(): Promise<DraftPreview | null> {
   return getDraftForPost(activePostId)
 }
 
-export async function setDraftForPost(postId: string, draft: DraftPreview): Promise<void> {
-  const map = await getDraftsMap()
-  map[postId] = { ...draft, postId, updatedAt: Date.now() }
-  await chrome.storage.local.set({
-    [DRAFTS_BY_POST_KEY]: map,
-    [ACTIVE_POST_KEY]: postId,
+export async function updateDraftsMap(
+  updater: (map: DraftsByPostId) => DraftsByPostId | void,
+  activePostId?: string
+): Promise<void> {
+  return withDraftsLock(async () => {
+    const map = await getDraftsMap()
+    const result = updater(map)
+    const nextMap = result ?? map
+    await chrome.storage.local.set({
+      [DRAFTS_BY_POST_KEY]: nextMap,
+      ...(activePostId ? { [ACTIVE_POST_KEY]: activePostId } : {}),
+    })
   })
+}
+
+export async function setDraftForPost(postId: string, draft: DraftPreview): Promise<void> {
+  return updateDraftsMap((map) => {
+    map[postId] = { ...draft, postId, updatedAt: Date.now() }
+  }, postId)
 }
 
 export async function setActivePost(postId: string): Promise<void> {

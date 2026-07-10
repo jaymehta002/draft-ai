@@ -13,15 +13,17 @@ export function ReplyRateRing({ rate, label = "Reply rate", sublabel }: ReplyRat
   const circumference = 2 * Math.PI * 54
 
   useEffect(() => {
+    let frameId = 0
     const start = performance.now()
     const duration = 800
     const tick = (now: number) => {
       const t = Math.min((now - start) / duration, 1)
       const eased = 1 - Math.pow(1 - t, 3)
       setAnimated(rate * eased)
-      if (t < 1) requestAnimationFrame(tick)
+      if (t < 1) frameId = requestAnimationFrame(tick)
     }
-    requestAnimationFrame(tick)
+    frameId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frameId)
   }, [rate])
 
   const offset = circumference - (Math.min(animated, 100) / 100) * circumference

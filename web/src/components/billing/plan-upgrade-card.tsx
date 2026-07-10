@@ -7,23 +7,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { UsageMeter } from "@/components/billing/usage-meter"
-import { fetchBillingStatus, startCheckout, type BillingStatus } from "@/lib/billing-client"
+import { startCheckout } from "@/lib/billing-client"
+import { useBillingStatus } from "@/hooks/use-billing-status"
 
 const TIER_LABEL: Record<string, string> = { FREE: "Free", PRO: "Pro", POWER: "Power" }
 
 /** Overview card — current plan, usage, and one-click upgrade. */
 export function PlanUpgradeCard() {
-  const [status, setStatus] = useState<BillingStatus | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { status, loading, error: loadError } = useBillingStatus()
   const [acting, setActing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetchBillingStatus()
-      .then(setStatus)
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
 
   const upgrade = async (tier: "PRO" | "POWER") => {
     setActing(true)
@@ -76,7 +69,7 @@ export function PlanUpgradeCard() {
           </div>
         )}
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {(error || loadError) && <p className="text-sm text-destructive">{error || loadError}</p>}
 
         <div className="flex flex-wrap gap-2">
           {!isPaid && (

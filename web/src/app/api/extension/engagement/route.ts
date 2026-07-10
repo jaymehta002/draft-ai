@@ -5,6 +5,7 @@ import { updateWeeklyGoal, VALID_WEEKLY_GOALS } from "@/lib/engagement"
 export async function PATCH(req: Request) {
   try {
     const auth = await authenticateBearerRequest(req, {
+      scope: "extension-engagement",
       limit: 20,
       windowMs: 60 * 60 * 1000,
     })

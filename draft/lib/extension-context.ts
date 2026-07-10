@@ -17,7 +17,10 @@ export function sendRuntimeMessage<T = unknown>(message: unknown): Promise<T | n
 
     try {
       chrome.runtime.sendMessage(message, (response) => {
-        void chrome.runtime.lastError
+        const lastError = chrome.runtime.lastError
+        if (lastError) {
+          console.warn("[extension] runtime message failed:", lastError.message)
+        }
         resolve((response as T) ?? null)
       })
     } catch {

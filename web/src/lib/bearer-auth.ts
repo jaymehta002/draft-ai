@@ -3,7 +3,7 @@ import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 export async function authenticateBearerRequest(
   req: Request,
-  options?: { limit?: number; windowMs?: number }
+  options?: { limit?: number; windowMs?: number; scope?: string }
 ) {
   const authHeader = req.headers.get("authorization")
   if (!authHeader?.startsWith("Bearer ")) {
@@ -18,8 +18,9 @@ export async function authenticateBearerRequest(
   }
 
   if (options?.limit && options?.windowMs) {
+    const scope = options.scope ?? "default"
     const result = rateLimit({
-      key: `user:${apiKey.userId}`,
+      key: `bearer:${scope}:${apiKey.userId}`,
       limit: options.limit,
       windowMs: options.windowMs,
     })

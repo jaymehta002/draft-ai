@@ -31,20 +31,29 @@ export function PreferencesSection({
   const [length, setLength] = useState(draftLength || "medium")
   const [language] = useState(outreachLanguage || "en")
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const persist = useCallback((next: { outreachTone: string; draftLength: string; outreachLanguage: string }) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
-      await saveOutreachPreferences(next)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      try {
+        await saveOutreachPreferences(next)
+        setSaveError(null)
+        setSaved(true)
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = setTimeout(() => setSaved(false), 2000)
+      } catch {
+        setSaveError("Couldn't save preferences. Please try again.")
+      }
     }, 500)
   }, [])
 
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
     }
   }, [])
 
@@ -70,6 +79,9 @@ export function PreferencesSection({
           </div>
           {saved && (
             <span className="text-xs font-medium text-chart-2">Saved</span>
+          )}
+          {saveError && (
+            <span className="text-xs font-medium text-destructive">{saveError}</span>
           )}
         </div>
       </CardHeader>

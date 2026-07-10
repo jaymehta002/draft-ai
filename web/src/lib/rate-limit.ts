@@ -5,6 +5,17 @@ type RateLimitEntry = {
 
 const buckets = new Map<string, RateLimitEntry>()
 
+const CLEANUP_INTERVAL_MS = 60_000
+let lastCleanup = Date.now()
+
+function evictExpiredBuckets(now = Date.now()) {
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return
+  lastCleanup = now
+  for (const [key, entry] of buckets) {
+    if (entry.resetAt <= now) buckets.delete(key)
+  }
+}
+
 export type RateLimitResult = {
   success: boolean
   remaining: number
@@ -21,6 +32,7 @@ export function rateLimit({
   windowMs: number
 }): RateLimitResult {
   const now = Date.now()
+  evictExpiredBuckets(now)
   const existing = buckets.get(key)
 
   if (!existing || existing.resetAt <= now) {

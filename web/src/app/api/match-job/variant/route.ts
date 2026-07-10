@@ -1,38 +1,30 @@
 import { NextResponse } from "next/server"
 import { authenticateBearerRequest } from "@/lib/bearer-auth"
 import { prisma } from "@/lib/prisma"
-import { normalizeDraftResult, type DraftResult } from "@/lib/outreach"
+import { parseDraftResult } from "@/lib/outreach"
 import { openai, OPENAI_MODEL } from "@/lib/openai"
+import { normalizeEmailGreeting } from "@/lib/email-greeting"
 import { incrementDraftStats } from "@/lib/user-stats"
-import { checkEntitlement, incrementUsage, limitReachedResponse } from "@/lib/entitlements"
+import { limitReachedResponse, releaseUsage, reserveUsage } from "@/lib/entitlements"
+import { recordActivity } from "@/lib/engagement"
 import { buildDraftSystemPrompt } from "@/lib/draft-prompt"
+import { getWebErrorMessage } from "@/lib/error-messages"
 
 const VALID_TONES = ["professional", "warm", "direct", "formal"] as const
 
-function normalizeEmailGreeting(message: string, recipientName: string | null) {
-  const cleaned = message.trim()
-  const greetingName = recipientName?.split(/\s+/)[0] || null
-  const greetingLine = greetingName ? `Hi ${greetingName},` : "Hello,"
-
-  if (!cleaned) return greetingLine
-
-  const lines = cleaned.split(/\r?\n/)
-  if (/^(hi|hello|dear|hey)\b/i.test(lines[0]?.trim() || "")) {
-    lines[0] = greetingLine
-    return lines.join("\n")
-  }
-
-  return `${greetingLine}\n\n${cleaned}`
-}
-
 export async function POST(req: Request) {
+  let reservedUserId: string | null = null
   try {
     const auth = await authenticateBearerRequest(req, {
+      scope: "match-job-variant",
       limit: 20,
       windowMs: 60 * 60 * 1000,
     })
     if (auth.error) return auth.error
-    const apiKey = auth.apiKey!
+    const apiKey = auth.apiKey
+    if (!apiKey) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
     const profile = apiKey.user.candidateProfile
     if (!profile?.onboardingComplete) {
@@ -80,9 +72,9 @@ export async function POST(req: Request) {
       })
     }
 
-    // New variant → counts as a draft. Enforce before the OpenAI call.
-    const draftCheck = await checkEntitlement(apiKey.userId, "draft")
-    if (!draftCheck.allowed) return limitReachedResponse(draftCheck)
+    const draftReserve = await reserveUsage(apiKey.userId, "draft")
+    if (!draftReserve.reserved) return limitReachedResponse(draftReserve.check)
+    reservedUserId = apiKey.userId
 
     const systemPrompt = buildDraftSystemPrompt(
       profile,
@@ -115,13 +107,36 @@ export async function POST(req: Request) {
 
     const responseContent = completion.choices[0]?.message?.content
     if (!responseContent) {
+      await releaseUsage(apiKey.userId, "draft")
+      reservedUserId = null
       return NextResponse.json(
-        { success: false, code: "ai_no_response", error: "Draft AI didn’t get a response from the AI model. Please try again." },
+        { success: false, code: "ai_no_response", error: getWebErrorMessage("ai_no_response") },
         { status: 502 }
       )
     }
 
-    const result = normalizeDraftResult(JSON.parse(responseContent) as DraftResult)
+    let parsedRaw: unknown
+    try {
+      parsedRaw = JSON.parse(responseContent)
+    } catch {
+      await releaseUsage(apiKey.userId, "draft")
+      reservedUserId = null
+      return NextResponse.json(
+        { success: false, code: "ai_invalid_response", error: getWebErrorMessage("ai_no_response") },
+        { status: 502 }
+      )
+    }
+
+    const result = parseDraftResult(parsedRaw)
+    if (!result) {
+      await releaseUsage(apiKey.userId, "draft")
+      reservedUserId = null
+      return NextResponse.json(
+        { success: false, code: "ai_invalid_response", error: getWebErrorMessage("ai_no_response") },
+        { status: 502 }
+      )
+    }
+
     if (existingDraft.actionMode === "EMAIL") result.action_mode = "EMAIL"
     else result.action_mode = "DM"
 
@@ -136,25 +151,34 @@ export async function POST(req: Request) {
 
     result.outreach_payload.message_content = message
 
-    const nextIndex =
-      existingDraft.variants.length > 0
-        ? Math.max(...existingDraft.variants.map((v) => v.variantIndex)) + 1
-        : 1
+    const variant = await prisma.$transaction(async (tx) => {
+      const fresh = await tx.postDraft.findUnique({
+        where: { id: existingDraft.id },
+        include: { variants: { orderBy: { variantIndex: "asc" } } },
+      })
+      if (!fresh) throw new Error("Draft not found")
 
-    const variant = await prisma.draftVariant.create({
-      data: {
-        postDraftId: existingDraft.id,
-        variantIndex: nextIndex,
-        toneUsed: alternateTone,
-        draftLength: profile.draftLength || "medium",
-        message,
-        subject,
-        draftResponse: result,
-      },
+      const nextIndex =
+        fresh.variants.length > 0
+          ? Math.max(...fresh.variants.map((v) => v.variantIndex)) + 1
+          : 1
+
+      return tx.draftVariant.create({
+        data: {
+          postDraftId: fresh.id,
+          variantIndex: nextIndex,
+          toneUsed: alternateTone,
+          draftLength: profile.draftLength || "medium",
+          message,
+          subject,
+          draftResponse: result,
+        },
+      })
     })
 
+    reservedUserId = null
     await incrementDraftStats(apiKey.userId)
-    await incrementUsage(apiKey.userId, "draft")
+    await recordActivity(apiKey.userId, "draft")
 
     return NextResponse.json({
       success: true,
@@ -174,9 +198,12 @@ export async function POST(req: Request) {
       },
     })
   } catch (error: unknown) {
+    if (reservedUserId) {
+      await releaseUsage(reservedUserId, "draft").catch(() => {})
+    }
     console.error("Match Job Variant Error:", error)
     return NextResponse.json(
-      { success: false, code: "server_error", error: "Draft AI ran into a problem on our end. Please try again." },
+      { success: false, code: "server_error", error: getWebErrorMessage("draft_generate_failed") },
       { status: 500 }
     )
   }

@@ -1,5 +1,6 @@
 import type { PlasmoCSConfig } from "plasmo"
 import { AUTH_MESSAGE_TYPE } from "~lib/config"
+import { getExtensionErrorMessage } from "~lib/error-messages"
 import {
   isExtensionContextValid,
   sendRuntimeMessage,
@@ -41,6 +42,18 @@ if (!isExtensionContextValid()) {
         email: event.data.email,
         name: event.data.name,
       },
+    }).then((result) => {
+      if (result && typeof result === "object" && "success" in result && !result.success) {
+        window.postMessage(
+          {
+            type: "RECRUIT_PITCH_AUTH_ERROR",
+            error:
+              (result as { error?: string }).error ||
+              getExtensionErrorMessage("unknown"),
+          },
+          window.location.origin
+        )
+      }
     })
   })
 }

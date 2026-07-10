@@ -116,8 +116,6 @@ async function handleDraftIntro() {
   const postUrl = window.location.href.split("?")[0]
   const recipientProfileUrl = postUrl
 
-  await sendRuntimeMessage({ type: "OPEN_SIDE_PANEL" })
-
   const response = await sendRuntimeMessage({
     type: "DRAFT_PITCH",
     payload: {
@@ -134,8 +132,11 @@ async function handleDraftIntro() {
   })
 
   if (!response?.success) {
-    console.error("[Draft AI] Profile draft failed:", response?.error)
+    alert(response?.error || getExtensionErrorMessage("draft_failed"))
+    return
   }
+
+  await sendRuntimeMessage({ type: "OPEN_SIDE_PANEL" })
 }
 
 function injectProfileButton() {
@@ -158,6 +159,10 @@ function init() {
   injectProfileButton()
 
   const observer = new MutationObserver(() => {
+    if (!isExtensionContextValid()) {
+      observer.disconnect()
+      return
+    }
     injectProfileButton()
   })
 

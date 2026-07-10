@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import confetti from "canvas-confetti"
 import { PartyPopper, X } from "lucide-react"
@@ -14,34 +14,41 @@ import type { Celebration } from "@/lib/engagement"
 export function ReplyCelebration() {
   const router = useRouter()
   const [celebration, setCelebration] = useState<Celebration | null>(null)
-  const [dismissed, setDismissed] = useState(false)
+  const fetchedRef = useRef(false)
 
   useEffect(() => {
+    if (fetchedRef.current) return
+    fetchedRef.current = true
+
+    let cancelled = false
+
     getPendingCelebrationsAction()
       .then((pending) => {
-        if (pending.length > 0 && !dismissed) {
-          setCelebration(pending[0])
-          confetti({
-            particleCount: 120,
-            spread: 70,
-            origin: { y: 0.6 },
-          })
-        }
+        if (cancelled || pending.length === 0) return
+        setCelebration(pending[0])
+        confetti({
+          particleCount: 120,
+          spread: 70,
+          origin: { y: 0.6 },
+        })
       })
       .catch(() => {})
-  }, [dismissed])
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleDismiss = async () => {
-    await consumeCelebrationsAction()
     setCelebration(null)
-    setDismissed(true)
+    await consumeCelebrationsAction()
   }
 
   const handleView = async () => {
-    await consumeCelebrationsAction()
-    setCelebration(null)
     const path =
       celebration?.actionMode === "DM" ? "/dashboard/dms" : "/dashboard/emails"
+    setCelebration(null)
+    await consumeCelebrationsAction()
     router.push(path)
   }
 

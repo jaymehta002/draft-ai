@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { UsageMeter } from "@/components/billing/usage-meter"
-import { fetchBillingStatus, startCheckout, openBillingPortal, type BillingStatus } from "@/lib/billing-client"
+import { startCheckout, openBillingPortal } from "@/lib/billing-client"
+import { invalidateBillingStatusCache, useBillingStatus } from "@/hooks/use-billing-status"
 import { Gift, Copy, Check, Sparkles, CreditCard } from "lucide-react"
 
 type ReferralSummary = {
@@ -21,31 +22,34 @@ type ReferralSummary = {
 const TIER_LABEL: Record<string, string> = { FREE: "Free", PRO: "Pro", POWER: "Power" }
 
 export function BillingTab() {
-  const [status, setStatus] = useState<BillingStatus | null>(null)
+  const { status, loading, error: statusError, refresh } = useBillingStatus()
   const [referral, setReferral] = useState<ReferralSummary | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [referralError, setReferralError] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
     const params = new URLSearchParams(window.location.search)
     const subscriptionId = params.get("subscription_id")
 
-    const refresh = () =>
-      Promise.all([
-        fetchBillingStatus(),
-        fetch("/api/referral").then((res) => (res.ok ? res.json() : null)),
-      ])
-        .then(([s, r]) => {
-          setStatus(s)
-          setReferral(r)
+    const loadReferral = () =>
+      fetch("/api/referral")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((r) => {
+          if (!cancelled) setReferral(r)
         })
-        .catch((e) => setError(e instanceof Error ? e.message : "Failed to load billing"))
-        .finally(() => setLoading(false))
+        .catch(() => {
+          if (!cancelled) setReferralError("Failed to load referral info")
+        })
+
+    const refreshAll = async () => {
+      invalidateBillingStatusCache()
+      await Promise.all([refresh(true), loadReferral()])
+    }
 
     const run = async () => {
-      // Fallback when webhooks fail: sync directly from Dodo using return_url params.
       if (params.get("checkout") === "success" && subscriptionId) {
         try {
           await fetch("/api/billing/sync", {
@@ -57,22 +61,28 @@ export function BillingTab() {
           // refresh will still run below
         }
       }
-      await refresh()
+      await refreshAll()
     }
 
     void run()
 
     const isReturning = params.get("checkout") === "success"
+    let timer: ReturnType<typeof setInterval> | null = null
     if (isReturning) {
       let tries = 0
-      const timer = setInterval(() => {
+      timer = setInterval(() => {
         tries += 1
-        void refresh()
-        if (tries >= 6) clearInterval(timer)
+        if (cancelled) return
+        void refreshAll()
+        if (tries >= 6 && timer) clearInterval(timer)
       }, 5000)
-      return () => clearInterval(timer)
     }
-  }, [])
+
+    return () => {
+      cancelled = true
+      if (timer) clearInterval(timer)
+    }
+  }, [refresh])
 
   const runCheckout = async (tier: "PRO" | "POWER") => {
     setActing(true)
@@ -123,8 +133,9 @@ export function BillingTab() {
     )
   }
 
-  if (error && !status) {
-    return <p className="text-sm text-destructive">{error}</p>
+  const displayError = error || statusError || referralError
+  if (displayError && !status) {
+    return <p className="text-sm text-destructive">{displayError}</p>
   }
 
   const isPaid = status && status.effectiveTier !== "FREE" && !status.isTrialing
@@ -134,7 +145,6 @@ export function BillingTab() {
 
   return (
     <div className="space-y-6">
-      {/* ── Current plan ── */}
       <Card className="border-border shadow-sm">
         <CardHeader>
           <div className="flex items-center justify-between gap-2">
@@ -187,7 +197,7 @@ export function BillingTab() {
             </div>
           )}
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {displayError && <p className="text-sm text-destructive">{displayError}</p>}
 
           <div className="flex flex-wrap gap-2">
             {!isPaid && (
@@ -218,7 +228,6 @@ export function BillingTab() {
         </CardContent>
       </Card>
 
-      {/* ── Referral ── */}
       {referral && (
         <Card className="border-border shadow-sm">
           <CardHeader>

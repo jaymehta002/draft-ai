@@ -171,23 +171,30 @@ function SidePanel() {
   useEffect(() => {
     if (!draft || draft.status !== "ready") return
 
+    const controller = new AbortController()
+
     chrome.storage.local.get(["apiKey"], async (result) => {
       const apiKey = result.apiKey as string | undefined
-      if (!apiKey) return
+      if (!apiKey || controller.signal.aborted) return
       try {
         const res = await fetch(`${WEB_URL}/api/extension/insights`, {
           headers: { Authorization: `Bearer ${apiKey}` },
+          signal: controller.signal,
         })
-        if (!res.ok) return
+        if (!res.ok || controller.signal.aborted) return
         const data = await res.json()
+        if (controller.signal.aborted) return
         if (data.recommendation?.reason) {
           setToneRecommendation(data.recommendation.reason)
           setRecommendedTone(data.recommendation.tone)
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return
         // Non-fatal
       }
     })
+
+    return () => controller.abort()
   }, [draft?.status, draft?.postId])
 
   const handleMessageChange = (value: string) => {
@@ -210,12 +217,12 @@ function SidePanel() {
 
   const handleSend = async () => {
     if (!draft?.emailPayload) {
-      setStatusNote({ tone: "error", text: "Email send is unavailable for this draft." })
+      setStatusNote({ tone: "error", text: getExtensionErrorMessage("email_send_unavailable") })
       return
     }
     const normalizedEmail = recipientEmail.trim()
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
-      setStatusNote({ tone: "error", text: "Enter a valid recipient email before sending." })
+      setStatusNote({ tone: "error", text: getExtensionErrorMessage("invalid_recipient_email") })
       return
     }
 
@@ -253,7 +260,7 @@ function SidePanel() {
         setSubmissionState("idle")
         setStatusNote({
           tone: "error",
-          text: chrome.runtime.lastError.message || "Failed to send email",
+          text: chrome.runtime.lastError.message || getExtensionErrorMessage("send_failed"),
         })
         return
       }
@@ -290,7 +297,7 @@ function SidePanel() {
         })
       } else {
         setSubmissionState("idle")
-        setStatusNote({ tone: "error", text: response?.error || "Failed to send email" })
+        setStatusNote({ tone: "error", text: response?.error || getExtensionErrorMessage("send_failed") })
       }
     })
   }
@@ -346,7 +353,7 @@ function SidePanel() {
         if (chrome.runtime.lastError || !response?.success) {
           setStatusNote({
             tone: "error",
-            text: response?.error || chrome.runtime.lastError?.message || "Failed to generate variant",
+            text: response?.error || chrome.runtime.lastError?.message || getExtensionErrorMessage("variant_failed"),
           })
           return
         }
@@ -384,21 +391,33 @@ function SidePanel() {
       }
 
       if (draft?.postId) {
-        chrome.runtime.sendMessage({
-          type: "RECORD_OUTREACH",
-          payload: {
-            postId: draft.postId,
-            postUrl: draft.postUrl,
-            platform: draft.platform,
-            draftId: draft.draftId,
-            variantId: activeVariantId ?? draft.variantId,
-            recipientName: draft.recipientName,
-            recipientHandle: draft.recipientHandle,
-            recipientProfileUrl: draft.recipientProfileUrl,
-            message,
-            actionMode: "DM",
-          },
+        const recorded = await new Promise<{ success?: boolean; error?: string } | null>((resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              type: "RECORD_OUTREACH",
+              payload: {
+                postId: draft.postId,
+                postUrl: draft.postUrl,
+                platform: draft.platform,
+                draftId: draft.draftId,
+                variantId: activeVariantId ?? draft.variantId,
+                recipientName: draft.recipientName,
+                recipientHandle: draft.recipientHandle,
+                recipientProfileUrl: draft.recipientProfileUrl,
+                message,
+                actionMode: "DM",
+              },
+            },
+            (response) => resolve(response ?? null)
+          )
         })
+
+        if (recorded && recorded.success === false && !recorded.error?.includes("Queued")) {
+          setStatusNote({
+            tone: "error",
+            text: recorded.error || getExtensionErrorMessage("record_failed"),
+          })
+        }
       }
 
       setCopied(true)

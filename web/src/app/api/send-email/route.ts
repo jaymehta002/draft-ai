@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { authenticateBearerRequest } from "@/lib/bearer-auth"
 import { prisma } from "@/lib/prisma"
 import { google } from "googleapis"
 import { randomUUID } from "crypto"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
+import { normalizeEmailGreeting } from "@/lib/email-greeting"
 import { resolveUploadThingFileUrl } from "@/lib/uploadthing-server"
 import { incrementSentStats } from "@/lib/user-stats"
-import { checkEntitlement, incrementUsage, limitReachedResponse, startProTrial } from "@/lib/entitlements"
+import { limitReachedResponse, releaseUsage, reserveUsage, startProTrial } from "@/lib/entitlements"
 import { maybeRewardReferralOnFirstSend } from "@/lib/referral"
 import { recordActivity } from "@/lib/engagement"
 import { resolveOutreachSendFields } from "@/lib/resolve-send-metadata"
 import { getGmailSendClient } from "@/lib/email-sync/token-manager"
+import { getWebErrorMessage } from "@/lib/error-messages"
 
 function chunkBase64(value: string) {
   return value.match(/.{1,76}/g)?.join("\n") ?? value
@@ -72,24 +75,7 @@ async function buildResumeAttachment(profile: {
     }
   }
 
-  // Never attach resume as a generated .txt. If we don't have a real file, omit the attachment.
   return null
-}
-
-function normalizeEmailGreeting(message: string, recipientName: string | null) {
-  const cleaned = message.trim()
-  const greetingName = recipientName?.split(/\s+/)[0] || null
-  const greetingLine = greetingName ? `Hi ${greetingName},` : "Hello,"
-
-  if (!cleaned) return greetingLine
-
-  const lines = cleaned.split(/\r?\n/)
-  if (/^(hi|hello|dear|hey)\b/i.test(lines[0]?.trim() || "")) {
-    lines[0] = greetingLine
-    return lines.join("\n")
-  }
-
-  return `${greetingLine}\n\n${cleaned}`
 }
 
 /** Generates a globally-unique RFC 2822 Message-ID. */
@@ -97,21 +83,45 @@ function generateRfcMessageId(): string {
   return `<${randomUUID()}@mail.recruitable.ai>`
 }
 
+function alreadySentResponse(existing: { id: string; gmailMessageId: string | null; status: string }) {
+  if (existing.status === "SENDING") {
+    return NextResponse.json({
+      success: true,
+      message: "Email send already in progress",
+      sentId: existing.id,
+      gmailMessageId: existing.gmailMessageId,
+      alreadySent: true,
+    })
+  }
+  return NextResponse.json({
+    success: true,
+    message: "Email already sent for this draft",
+    sentId: existing.id,
+    gmailMessageId: existing.gmailMessageId,
+    alreadySent: true,
+  })
+}
+
 export async function POST(req: Request) {
+  let reservedUserId: string | null = null
   try {
     const auth = await authenticateBearerRequest(req, {
+      scope: "send-email",
       limit: 10,
       windowMs: 60 * 60 * 1000,
     })
     if (auth.error) return auth.error
-    const apiKey = auth.apiKey!
+    const apiKey = auth.apiKey
+    if (!apiKey) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
     const tokenResult = await getGmailSendClient(apiKey.userId)
     if (!tokenResult.ok) {
       return NextResponse.json(
         {
           code: "gmail_not_connected",
-          error: "Gmail isn’t connected. Reconnect Google from your dashboard.",
+          error: getWebErrorMessage("gmail_not_connected"),
         },
         { status: 400 }
       )
@@ -125,19 +135,19 @@ export async function POST(req: Request) {
 
     if (!recipientEmail) {
       return NextResponse.json(
-        { code: "invalid_recipient_email", error: "Enter a valid recipient email address." },
+        { code: "invalid_recipient_email", error: getWebErrorMessage("invalid_recipient_email") },
         { status: 400 }
       )
     }
     if (!normalizedSubject || !rawBody.trim()) {
       return NextResponse.json(
-        { code: "missing_subject_or_body", error: "Add a subject and message body to send this email." },
+        { code: "missing_subject_or_body", error: getWebErrorMessage("missing_subject_or_body") },
         { status: 400 }
       )
     }
     if (!postId) {
       return NextResponse.json(
-        { code: "missing_post_id", error: "This draft is missing a post ID. Please draft again from the post." },
+        { code: "missing_post_id", error: getWebErrorMessage("missing_post_id") },
         { status: 400 }
       )
     }
@@ -146,28 +156,21 @@ export async function POST(req: Request) {
       const existing = await prisma.sentOutreach.findUnique({
         where: { postDraftId: draftId },
       })
-      if (existing) {
-        return NextResponse.json({
-          success: true,
-          message: "Email already sent for this draft",
-          sentId: existing.id,
-          gmailMessageId: existing.gmailMessageId,
-          alreadySent: true,
-        })
+      if (existing && existing.status !== "FAILED") {
+        return alreadySentResponse(existing)
       }
     }
 
-    // Enforce the monthly email cap before we actually send.
-    const emailCheck = await checkEntitlement(apiKey.userId, "email")
-    if (!emailCheck.allowed) return limitReachedResponse(emailCheck)
+    const emailReserve = await reserveUsage(apiKey.userId, "email")
+    if (!emailReserve.reserved) return limitReachedResponse(emailReserve.check)
+    reservedUserId = apiKey.userId
 
     const isFirstSend =
-      (await prisma.sentOutreach.count({ where: { userId: apiKey.userId } })) === 0
+      (await prisma.sentOutreach.count({ where: { userId: apiKey.userId, status: "SENT" } })) === 0
 
     const oauth2Client = tokenResult.oauth2Client
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
-    // ── Build the outbound MIME message ────────────────────────────────────────
     const rfcMessageId = generateRfcMessageId()
     const utf8Subject = `=?utf-8?B?${Buffer.from(normalizedSubject).toString("base64")}?=`
     const normalizedBody = normalizeEmailGreeting(rawBody, resolvedRecipientName)
@@ -212,95 +215,125 @@ export async function POST(req: Request) {
       .replace(/\//g, "_")
       .replace(/=+$/, "")
 
-    const sendResult = await gmail.users.messages.send({
-      userId: "me",
-      requestBody: { raw: encodedMessage },
-    })
-
-    const gmailMessageId = sendResult.data.id || null
-    const gmailThreadId = sendResult.data.threadId || null
-
-    // ── Persist SentOutreach + EmailThread + EmailMessage in one transaction ───
     const snippet = normalizedBody.slice(0, 300)
     const sendMeta = await resolveOutreachSendFields(apiKey.userId, draftId, variantId)
 
-    const sent = await prisma.sentOutreach.create({
-      data: {
-        userId: apiKey.userId,
-        postDraftId: draftId || null,
-        postId,
-        postUrl: postUrl || null,
-        platform: platform || "UNKNOWN",
-        recipientEmail,
-        recipientName: resolvedRecipientName,
-        recipientHandle: recipientHandle || null,
-        recipientProfileUrl: recipientProfileUrl || null,
-        gmailMessageId,
-        rfcMessageId,
-        gmailThreadId,
-        subject: normalizedSubject,
-        message: normalizedBody,
-        actionMode: "EMAIL",
-        status: "SENT",
-        toneUsed: sendMeta.toneUsed,
-        draftLengthUsed: sendMeta.draftLengthUsed,
-        matchScore: sendMeta.matchScore,
-        variantId: sendMeta.variantId,
-        industryTag: sendMeta.industryTag,
-        emailThread: {
-          create: {
-            userId: apiKey.userId,
-            subject: normalizedSubject,
-            participantEmail: recipientEmail,
-            lastMessageAt: new Date(),
-            isRead: true,
-            messageCount: 1,
-            messages: {
-              create: {
-                userId: apiKey.userId,
-                direction: "OUTBOUND",
-                fromAddress: apiKey.user.email ?? "",
-                toAddresses: JSON.stringify([recipientEmail]),
-                subject: normalizedSubject,
-                snippet,
-                rawBody: normalizedBody,
-                rfcMessageId,
-                providerMsgId: gmailMessageId,
-                providerThreadId: gmailThreadId,
-                isRead: true,
-                receivedAt: new Date(),
+    let pendingId: string
+    try {
+      const pending = await prisma.sentOutreach.create({
+        data: {
+          userId: apiKey.userId,
+          postDraftId: draftId || null,
+          postId,
+          postUrl: postUrl || null,
+          platform: platform || "UNKNOWN",
+          recipientEmail,
+          recipientName: resolvedRecipientName,
+          recipientHandle: recipientHandle || null,
+          recipientProfileUrl: recipientProfileUrl || null,
+          subject: normalizedSubject,
+          message: normalizedBody,
+          actionMode: "EMAIL",
+          status: "SENDING",
+          rfcMessageId,
+          toneUsed: sendMeta.toneUsed,
+          draftLengthUsed: sendMeta.draftLengthUsed,
+          matchScore: sendMeta.matchScore,
+          variantId: sendMeta.variantId,
+          industryTag: sendMeta.industryTag,
+        },
+      })
+      pendingId = pending.id
+    } catch (error) {
+      if (draftId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const existing = await prisma.sentOutreach.findUnique({ where: { postDraftId: draftId } })
+        if (existing) return alreadySentResponse(existing)
+      }
+      throw error
+    }
+
+    try {
+      const sendResult = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw: encodedMessage },
+      })
+
+      const gmailMessageId = sendResult.data.id || null
+      const gmailThreadId = sendResult.data.threadId || null
+
+      const sent = await prisma.sentOutreach.update({
+        where: { id: pendingId },
+        data: {
+          status: "SENT",
+          gmailMessageId,
+          gmailThreadId,
+          emailThread: {
+            create: {
+              userId: apiKey.userId,
+              subject: normalizedSubject,
+              participantEmail: recipientEmail,
+              lastMessageAt: new Date(),
+              isRead: true,
+              messageCount: 1,
+              messages: {
+                create: {
+                  userId: apiKey.userId,
+                  direction: "OUTBOUND",
+                  fromAddress: apiKey.user.email ?? "",
+                  toAddresses: JSON.stringify([recipientEmail]),
+                  subject: normalizedSubject,
+                  snippet,
+                  rawBody: normalizedBody,
+                  rfcMessageId,
+                  providerMsgId: gmailMessageId,
+                  providerThreadId: gmailThreadId,
+                  isRead: true,
+                  receivedAt: new Date(),
+                },
               },
             },
           },
         },
-      },
-    })
+      })
 
-    await incrementSentStats(apiKey.userId)
-    await incrementUsage(apiKey.userId, "email")
-    await recordActivity(apiKey.userId, "send")
+      await incrementSentStats(apiKey.userId)
+      await recordActivity(apiKey.userId, "send")
 
-    if (isFirstSend) {
-      // Trial psychology: let them feel the win, then start the 14-day Pro trial.
-      await startProTrial(apiKey.userId)
-      await maybeRewardReferralOnFirstSend(apiKey.userId)
+      if (isFirstSend) {
+        await startProTrial(apiKey.userId)
+        await maybeRewardReferralOnFirstSend(apiKey.userId)
+      }
+
+      reservedUserId = null
+      return NextResponse.json({
+        success: true,
+        message: "Email sent successfully",
+        sentId: sent.id,
+        gmailMessageId,
+        rfcMessageId,
+      })
+    } catch (error) {
+      await prisma.sentOutreach.update({
+        where: { id: pendingId },
+        data: { status: "FAILED" },
+      }).catch(() => {})
+      if (reservedUserId) {
+        await releaseUsage(reservedUserId, "email").catch(() => {})
+        reservedUserId = null
+      }
+      throw error
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Email sent successfully",
-      sentId: sent.id,
-      gmailMessageId,
-      rfcMessageId,
-    })
-
   } catch (error: unknown) {
+    if (reservedUserId) {
+      await releaseUsage(reservedUserId, "email").catch(() => {})
+    }
     console.error("Send Email Error:", error)
     return NextResponse.json(
       {
         success: false,
         code: "server_error",
-        error: "Draft AI ran into a problem on our end. Please try again.",
+        error: getWebErrorMessage("server_error"),
       },
       { status: 500 }
     )

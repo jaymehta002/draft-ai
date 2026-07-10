@@ -1,5 +1,6 @@
 "use server"
 
+import { cache } from "react"
 import { prisma } from "@/lib/prisma"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
@@ -725,7 +726,7 @@ export async function syncWinningTemplatesFromReplies() {
   return { synced: winners.length }
 }
 
-export async function getDashboardData() {
+export const getDashboardData = cache(async function getDashboardData() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return null
 
@@ -733,9 +734,8 @@ export async function getDashboardData() {
     where: { email: session.user.email },
     include: {
       candidateProfile: true,
-      hiringProfile: true,
-      apiKeys: true
-    }
+      apiKeys: true,
+    },
   })
 
   if (!user) return null
@@ -744,12 +744,11 @@ export async function getDashboardData() {
     candidateProfile: user.candidateProfile
       ? toCandidateProfileData(user.candidateProfile)
       : null,
-    hiringProfile: user.hiringProfile,
     apiKey: user.apiKeys[0]?.keyPrefix ? `${user.apiKeys[0].keyPrefix}••••••••` : null,
     apiKeyIssued: user.apiKeys.length > 0,
     onboardingComplete: user.candidateProfile?.onboardingComplete ?? false,
   }
-}
+})
 
 export async function getDashboardNavCounts() {
   const user = await getAuthenticatedUser()

@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { AlertTriangle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { fetchBillingStatus, UPGRADE_URL, type BillingStatus } from "@/lib/billing-client"
+import { UPGRADE_URL } from "@/lib/billing-client"
+import { useBillingStatus } from "@/hooks/use-billing-status"
 
 function pct(used: number, limit: number) {
   return limit > 0 ? (used / limit) * 100 : 0
@@ -12,14 +13,8 @@ function pct(used: number, limit: number) {
 
 /** Slim banner nudging the user to upgrade as they approach/hit their caps. */
 export function UsageBanner() {
-  const [status, setStatus] = useState<BillingStatus | null>(null)
+  const { status } = useBillingStatus()
   const [dismissed, setDismissed] = useState(false)
-
-  useEffect(() => {
-    fetchBillingStatus()
-      .then(setStatus)
-      .catch(() => {})
-  }, [])
 
   if (!status || dismissed || !status.enforcementEnabled) return null
   if (status.effectiveTier === "POWER") return null

@@ -87,9 +87,14 @@ export async function generateFollowUpDraft(
   const raw = completion.choices[0]?.message?.content
   if (!raw) throw new Error("No response from AI")
 
-  const parsed = JSON.parse(raw) as {
-    subject_line?: string | null
-    message_content: string
+  let parsed: { subject_line?: string | null; message_content: string }
+  try {
+    parsed = JSON.parse(raw) as { subject_line?: string | null; message_content: string }
+  } catch {
+    throw new Error("Invalid AI response")
+  }
+  if (typeof parsed.message_content !== "string" || !parsed.message_content.trim()) {
+    throw new Error("Invalid AI response")
   }
 
   const postId = `followup-${outreach.id}-${followUpType}`

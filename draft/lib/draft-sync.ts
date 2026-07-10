@@ -26,6 +26,16 @@ export async function persistDraftEdits(
     return null
   }
 
+  const latest = await getDraftForPost(resolvedPostId)
+  if (
+    latest &&
+    latest.updatedAt > current.updatedAt &&
+    latest.status === "ready" &&
+    current.status !== "ready"
+  ) {
+    return latest
+  }
+
   const nextSubject = subject ?? current.subject ?? ""
   const nextRecipientEmail =
     recipientEmail !== undefined

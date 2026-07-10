@@ -5,7 +5,7 @@ import { incrementReplyStats } from "@/lib/user-stats"
 
 export async function POST(req: Request) {
   try {
-    const auth = await authenticateBearerRequest(req, { limit: 60, windowMs: 60 * 60 * 1000 })
+    const auth = await authenticateBearerRequest(req, { scope: "extension-mark-replied", limit: 60, windowMs: 60 * 60 * 1000 })
     if (auth.error) return auth.error
     const apiKey = auth.apiKey!
 

@@ -1,4 +1,5 @@
 import "server-only"
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import type { PlanTier, SubscriptionStatus, Subscription, UsageLedger } from "@prisma/client"
 import {
@@ -147,9 +148,7 @@ export async function getUserEntitlements(
 
   const subscription = await prisma.subscription.findUnique({ where: { userId } })
   const period = resolvePeriod(subscription)
-  const ledger = await prisma.usageLedger.findUnique({
-    where: { userId_periodStart: { userId, periodStart: period.start } },
-  })
+  const ledger = await getOrCreateLedger(userId, period)
 
   const { effectiveTier, isTrialing } = resolveEffectiveTier(subscription)
   const limits = PLAN_LIMITS[effectiveTier]
@@ -247,7 +246,7 @@ function entitlementBlockedMessage(check: Pick<EntitlementCheck, "reason" | "fea
 
 /** Standard 402 response body for a blocked metered request. */
 export function limitReachedResponse(check: EntitlementCheck) {
-  return Response.json(
+  return NextResponse.json(
     {
       success: false,
       code: check.reason ?? "limit_reached",
@@ -263,6 +262,64 @@ export function limitReachedResponse(check: EntitlementCheck) {
 }
 
 // ─── mutation ──────────────────────────────────────────────────────────────
+
+/**
+ * Atomically reserves one unit of usage before external work (OpenAI/Gmail).
+ * When enforcement is off, always succeeds after the entitlement check.
+ */
+export async function reserveUsage(
+  userId: string,
+  feature: Exclude<Feature, "insight">
+): Promise<{ reserved: boolean; check: EntitlementCheck }> {
+  const check = await checkEntitlement(userId, feature)
+  if (!check.allowed) return { reserved: false, check }
+  if (!isEnforcementEnabled()) return { reserved: true, check }
+
+  const subscription = await prisma.subscription.findUnique({ where: { userId } })
+  const period = resolvePeriod(subscription)
+  await getOrCreateLedger(userId, period)
+
+  await prisma.usageLedger.update({
+    where: { userId_periodStart: { userId, periodStart: period.start } },
+    data: feature === "draft" ? { draftsUsed: { increment: 1 } } : { emailsSent: { increment: 1 } },
+  })
+  invalidateEntitlements(userId)
+
+  const fresh = await getUserEntitlements(userId, { fresh: true })
+  const used = feature === "draft" ? fresh.usage.draftsUsed : fresh.usage.emailsSent
+  const bonus = feature === "draft" ? fresh.usage.bonusDrafts : fresh.usage.bonusEmails
+  const baseLimit = feature === "draft" ? fresh.limits.drafts : fresh.limits.emails
+  const { allowed } = evaluateLimit(used, baseLimit, bonus)
+
+  if (!allowed) {
+    await prisma.usageLedger.update({
+      where: { userId_periodStart: { userId, periodStart: period.start } },
+      data: feature === "draft" ? { draftsUsed: { decrement: 1 } } : { emailsSent: { decrement: 1 } },
+    })
+    invalidateEntitlements(userId)
+    const blocked = await checkEntitlement(userId, feature)
+    return { reserved: false, check: blocked }
+  }
+
+  return { reserved: true, check }
+}
+
+export async function releaseUsage(userId: string, feature: Exclude<Feature, "insight">) {
+  if (!isEnforcementEnabled()) return
+
+  const subscription = await prisma.subscription.findUnique({ where: { userId } })
+  const period = resolvePeriod(subscription)
+
+  await prisma.usageLedger.updateMany({
+    where: {
+      userId,
+      periodStart: period.start,
+      ...(feature === "draft" ? { draftsUsed: { gt: 0 } } : { emailsSent: { gt: 0 } }),
+    },
+    data: feature === "draft" ? { draftsUsed: { decrement: 1 } } : { emailsSent: { decrement: 1 } },
+  })
+  invalidateEntitlements(userId)
+}
 
 export async function incrementUsage(userId: string, feature: Exclude<Feature, "insight">) {
   const subscription = await prisma.subscription.findUnique({ where: { userId } })
@@ -319,6 +376,10 @@ export async function startProTrial(userId: string) {
       currentPeriodStart: now,
       currentPeriodEnd: trialEnd,
     },
+  }).catch(async () => {
+    const row = await prisma.subscription.findUnique({ where: { userId } })
+    if (!row) throw new Error("Failed to start Pro trial")
+    return row
   })
   invalidateEntitlements(userId)
   return sub

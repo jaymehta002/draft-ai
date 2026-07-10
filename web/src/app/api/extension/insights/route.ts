@@ -7,6 +7,7 @@ import { checkEntitlement, UPGRADE_URL } from "@/lib/entitlements"
 export async function GET(req: Request) {
   try {
     const auth = await authenticateBearerRequest(req, {
+      scope: "extension-insights",
       limit: 60,
       windowMs: 60 * 60 * 1000,
     })

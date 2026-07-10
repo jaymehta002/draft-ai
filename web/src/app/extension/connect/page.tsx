@@ -62,7 +62,7 @@ function classifyError(status: number | null, code: string | undefined, rawMessa
     }
   }
 
-  if (code === "invalid_state" || code === "expired_state" || status === 400 || msg.includes("state")) {
+  if (code === "invalid_state" || code === "expired_state" || msg.includes("state")) {
     return {
       kind: "invalid-state",
       title: "Link expired",
@@ -257,6 +257,7 @@ function ExtensionConnectContent() {
   const hasStartedRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
   const attemptRef = useRef(0)
+  const postMessageTimersRef = useRef<number[]>([])
 
   const runConnect = useCallback(
     async (currentState: string) => {
@@ -329,22 +330,36 @@ function ExtensionConnectContent() {
           return
         }
 
+        if (!data?.apiKey) {
+          setPhase({
+            step: "error",
+            info: {
+              kind: "server",
+              title: "Something went wrong",
+              message: getWebErrorMessage("server_error"),
+              retryable: true,
+            },
+            attempt,
+          })
+          return
+        }
+
         try {
           const authMsg = {
             type: AUTH_MESSAGE_TYPE,
-            state: data?.state ?? currentState,
-            apiKey: data?.apiKey,
-            email: data?.email,
-            name: data?.name,
+            state: data.state ?? currentState,
+            apiKey: data.apiKey,
+            email: data.email,
+            name: data.name,
           }
-          // Post immediately
           window.postMessage(authMsg, window.location.origin)
-          
-          // Post a few more times to ensure the content script catches it
-          // in case of any race conditions during injection
-          setTimeout(() => window.postMessage(authMsg, window.location.origin), 500)
-          setTimeout(() => window.postMessage(authMsg, window.location.origin), 1500)
-          setTimeout(() => window.postMessage(authMsg, window.location.origin), 3000)
+
+          postMessageTimersRef.current.forEach(clearTimeout)
+          postMessageTimersRef.current = [
+            window.setTimeout(() => window.postMessage(authMsg, window.location.origin), 500),
+            window.setTimeout(() => window.postMessage(authMsg, window.location.origin), 1500),
+            window.setTimeout(() => window.postMessage(authMsg, window.location.origin), 3000),
+          ]
         } catch {
           // Connection still succeeded server-side even if postMessage throws.
         }
@@ -404,7 +419,10 @@ function ExtensionConnectContent() {
     }
   }, [state, status, runConnect])
 
-  useEffect(() => () => abortRef.current?.abort("unmount"), [])
+  useEffect(() => () => {
+    abortRef.current?.abort("unmount")
+    postMessageTimersRef.current.forEach(clearTimeout)
+  }, [])
 
   const handleRetry = () => state && runConnect(state)
   const handleCloseTab = () => {

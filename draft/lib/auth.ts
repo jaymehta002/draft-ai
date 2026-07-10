@@ -3,7 +3,6 @@ import {
   AUTH_STORAGE_KEYS,
   type AuthState,
 } from "./config"
-import { SENT_POSTS_STORAGE_KEY } from "./sent-posts"
 
 export async function getAuthState(): Promise<AuthState | null> {
   const result = await chrome.storage.local.get([
@@ -42,7 +41,6 @@ export async function clearAuthState(): Promise<void> {
     AUTH_STORAGE_KEYS.userName,
     AUTH_STORAGE_KEYS.connectedAt,
     AUTH_STORAGE_KEYS.pendingConnectState,
-    SENT_POSTS_STORAGE_KEY,
   ])
 }
 
@@ -57,9 +55,13 @@ export async function verifyAuthState(): Promise<AuthState | null> {
       },
     })
 
-    if (!response.ok) {
+    if (response.status === 401) {
       await clearAuthState()
       return null
+    }
+
+    if (!response.ok) {
+      return auth
     }
 
     const data = await response.json()
