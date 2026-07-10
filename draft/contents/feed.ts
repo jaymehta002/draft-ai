@@ -23,6 +23,7 @@ import {
 } from "~lib/sent-posts"
 import { getFeedPlatformFromHostname } from "~lib/platform"
 import { extractEmailFromText, inferRecipientNameFromEmail } from "~lib/email"
+import { getExtensionErrorMessage } from "~lib/error-messages"
 
 export const config: PlasmoCSConfig = {
   matches: ["*://*.x.com/*", "*://*.twitter.com/*", "*://*.linkedin.com/*"],
@@ -243,6 +244,76 @@ type PlatformConfig = {
   getAuthorHandle?: (post: HTMLElement) => string | null
 }
 
+const normalizePostText = (value: string) =>
+  value
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+
+const readVisibleText = (root: Element) => {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const text = node.nodeValue ?? ""
+      if (!text.trim()) return NodeFilter.FILTER_REJECT
+
+      const parent = (node.parentElement ?? null) as Element | null
+      if (!parent) return NodeFilter.FILTER_REJECT
+
+      const tag = parent.tagName.toLowerCase()
+      if (tag === "script" || tag === "style" || tag === "noscript") return NodeFilter.FILTER_REJECT
+
+      const style = window.getComputedStyle(parent)
+      if (style.display === "none" || style.visibility === "hidden") return NodeFilter.FILTER_REJECT
+
+      return NodeFilter.FILTER_ACCEPT
+    },
+  })
+
+  let out = ""
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    out += `${node.nodeValue} `
+    if (out.length > 8000) break
+  }
+  return normalizePostText(out)
+}
+
+const getLinkedInPostText = (post: HTMLElement) => {
+  const candidates = [
+    // LinkedIn frequently changes; keep this list broad but scoped to the post container.
+    '[data-testid="post-content"]',
+    '[data-testid="feed-shared-update__description"]',
+    '[data-testid="main-feed-activity-card__commentary"]',
+    '[data-testid="expandable-text-box"]',
+    '[data-view-name="feed-commentary"]',
+    ".update-components-text",
+    ".update-components-text-view",
+    ".feed-shared-update-v2__description-wrapper",
+    ".feed-shared-update-v2__description",
+    ".feed-shared-inline-show-more-text",
+    '[class*="feed-shared-text"]',
+    '[class*="update-components-text"]',
+  ]
+
+  for (const selector of candidates) {
+    const el = post.querySelector(selector)
+    const text = normalizePostText(el?.textContent ?? "")
+    if (text.length >= 40) return text
+  }
+
+  // Fallback: read visible text but exclude UI chrome and action bars.
+  const clone = post.cloneNode(true) as HTMLElement
+  clone.querySelectorAll("button, [role='button'], [role='group'], nav, footer, header, svg").forEach((el) => el.remove())
+  clone.querySelectorAll("a").forEach((a) => {
+    // Preserve link text but avoid dumping full URLs
+    a.setAttribute("href", "")
+  })
+
+  const fallback = readVisibleText(clone)
+  return fallback
+}
+
 const LINKEDIN_POST_SELECTORS = [
   '[data-view-name="feed-full-update"]',
   "div.feed-shared-update-v2",
@@ -406,10 +477,7 @@ const PLATFORMS: Record<"X" | "LINKEDIN", PlatformConfig> = {
       return ""
     },
     getPostText: (post: HTMLElement) => {
-      const textElement = post.querySelector(
-        '[data-testid="expandable-text-box"], [data-view-name="feed-commentary"], .update-components-text, .feed-shared-inline-show-more-text, [class*="feed-shared-text"]'
-      )
-      return textElement?.textContent?.trim() || ""
+      return getLinkedInPostText(post)
     },
     getPostId: (post: HTMLElement) => {
       const urn = getLinkedInUrn(post)
@@ -493,7 +561,7 @@ let domObserver: MutationObserver | null = null
 let removeStorageListener: (() => void) | null = null
 let injectRetryTimers: number[] = []
 
-const CONTEXT_INVALID_MSG = "Extension was updated — refresh this page to continue."
+const CONTEXT_INVALID_MSG = getExtensionErrorMessage("context_invalid")
 
 const applySentState = (button: HTMLButtonElement) => {
   button.className = "rp-draft-btn rp-draft-btn--sent"
@@ -762,7 +830,7 @@ const bindReadyPopoverActions = (
     if (!sendResponse.success) {
       primaryBtn.disabled = false
       primaryBtn.textContent = "Send email"
-      renderPopoverError(popover, sendResponse?.error || "Failed to send")
+      renderPopoverError(popover, sendResponse?.error || getExtensionErrorMessage("send_failed"))
       return
     }
 
@@ -873,6 +941,17 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
   const popover = openPopover(button, emailRecipientName || name)
 
   try {
+    // Guardrail: LinkedIn DOM often collapses content behind "See more".
+    // If we can't extract enough post text, don't send a low-context request (it yields generic templates).
+    const minChars = platform.id === "LINKEDIN" ? 60 : 20
+    if (normalizePostText(text).length < minChars) {
+      throw new Error(
+        platform.id === "LINKEDIN"
+          ? "Couldn't read enough of this post. Click “See more” to expand it, then click Draft again."
+          : "Couldn't read enough of this post to draft a message."
+      )
+    }
+
     const payload = {
       text,
       name,

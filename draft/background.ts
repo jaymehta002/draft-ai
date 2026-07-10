@@ -15,6 +15,8 @@ import {
 import { migrateLegacyDraft, setDraftForPost, type DraftPreview } from "~lib/draft"
 import { captureExtensionError } from "~lib/sentry"
 import { markPostSent, mergeSentPosts, getSentPosts } from "~lib/sent-posts"
+import { readApiError, mapApiErrorToExtensionCode } from "~lib/api-errors"
+import { getExtensionErrorMessage } from "~lib/error-messages"
 import {
   enqueueOfflineAction,
   getOfflineQueue,
@@ -197,7 +199,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function getApiKey() {
   const auth = await getAuthState()
   if (!auth?.apiKey) {
-    throw new Error("Not signed in. Open the extension popup and sign in with your dashboard.")
+    throw new Error(getExtensionErrorMessage("not_signed_in"))
   }
   return auth.apiKey
 }
@@ -420,18 +422,14 @@ const DEFAULT_UPGRADE_PATH = "/dashboard/profile?tab=billing"
 /** Builds a structured limit-reached result from a 402 response body. */
 function limitReachedResult(data: { feature?: string; upgradeUrl?: string }) {
   const feature = data.feature
-  const message =
-    feature === "email"
-      ? "You've hit your monthly email limit. Upgrade to keep sending."
-      : feature === "follow_up"
-        ? "Follow-up drafts are a Pro feature. Upgrade to unlock them."
-        : "You've used all your drafts this month. Upgrade for more."
   return {
     success: false as const,
     limitReached: true as const,
     feature,
     upgradeUrl: `${WEB_URL}${data.upgradeUrl || DEFAULT_UPGRADE_PATH}`,
-    error: message,
+    error: getExtensionErrorMessage("limit_reached", {
+      feature: (feature as "draft" | "email" | "follow_up" | "insight" | undefined) ?? undefined,
+    }),
   }
 }
 
@@ -448,11 +446,11 @@ async function handleDraftPitch(payload: unknown) {
       body: JSON.stringify(payload),
     })
 
-    const data = await response.json()
+    const data = await readApiError(response)
 
     if (response.status === 401) {
       await handleUnauthorized()
-      throw new Error("Session expired. Please sign in again from the extension popup.")
+      return { success: false, error: getExtensionErrorMessage("session_expired") }
     }
 
     if (response.status === 402) {
@@ -460,17 +458,20 @@ async function handleDraftPitch(payload: unknown) {
     }
 
     if (!response.ok) {
-      throw new Error(data.error || "Failed to draft pitch")
+      const mapped = mapApiErrorToExtensionCode(response.status, data, "draft_failed")
+      if (mapped.limitReached) return limitReachedResult(data)
+      return { success: false, error: getExtensionErrorMessage(mapped.code, mapped.params) }
     }
 
     return {
       success: true,
-      data: data.data,
-      draftId: data.draftId as string | undefined,
-      cached: data.cached as boolean | undefined,
+      data: (data as unknown as { data?: unknown }).data,
+      draftId: (data as unknown as { draftId?: string }).draftId,
+      cached: (data as unknown as { cached?: boolean }).cached,
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to draft pitch"
+    const message =
+      error instanceof Error ? error.message : getExtensionErrorMessage("draft_failed")
     console.error("Error fetching pitch:", error)
     return { success: false, error: message }
   }
@@ -489,19 +490,20 @@ async function handleRecordOutreach(payload: unknown) {
       body: JSON.stringify(payload),
     })
 
-    const data = await response.json()
+    const data = await readApiError(response)
 
     if (response.status === 401) {
       await handleUnauthorized()
-      throw new Error("Session expired. Please sign in again from the extension popup.")
+      return { success: false, error: getExtensionErrorMessage("session_expired") }
     }
 
     if (!response.ok) {
       if (isRetryableFetchError(null, response)) {
         await enqueueOfflineAction({ type: "record-outreach", payload })
-        return { success: false, error: "Queued for retry when back online", queued: true }
+        return { success: false, error: getExtensionErrorMessage("offline_queued"), queued: true }
       }
-      throw new Error(data.error || "Failed to record outreach")
+      const mapped = mapApiErrorToExtensionCode(response.status, data, "record_failed")
+      return { success: false, error: getExtensionErrorMessage(mapped.code, mapped.params) }
     }
 
     const body = payload as { postId?: string }
@@ -513,9 +515,10 @@ async function handleRecordOutreach(payload: unknown) {
   } catch (error: unknown) {
     if (isRetryableFetchError(error)) {
       await enqueueOfflineAction({ type: "record-outreach", payload })
-      return { success: false, error: "Queued for retry when back online", queued: true }
+      return { success: false, error: getExtensionErrorMessage("offline_queued"), queued: true }
     }
-    const message = error instanceof Error ? error.message : "Failed to record outreach"
+    const message =
+      error instanceof Error ? error.message : getExtensionErrorMessage("record_failed")
     console.error("Error recording outreach:", error)
     return { success: false, error: message }
   }
@@ -534,11 +537,11 @@ async function handleSendEmail(payload: unknown) {
       body: JSON.stringify(payload),
     })
 
-    const data = await response.json()
+    const data = await readApiError(response)
 
     if (response.status === 401) {
       await handleUnauthorized()
-      throw new Error("Session expired. Please sign in again from the extension popup.")
+      return { success: false, error: getExtensionErrorMessage("session_expired") }
     }
 
     if (response.status === 402) {
@@ -548,9 +551,11 @@ async function handleSendEmail(payload: unknown) {
     if (!response.ok) {
       if (isRetryableFetchError(null, response)) {
         await enqueueOfflineAction({ type: "send-email", payload })
-        return { success: false, error: "Queued for retry when back online", queued: true }
+        return { success: false, error: getExtensionErrorMessage("offline_queued"), queued: true }
       }
-      throw new Error(data.error || "Failed to send email")
+      const mapped = mapApiErrorToExtensionCode(response.status, data, "send_failed")
+      if (mapped.limitReached) return limitReachedResult(data)
+      return { success: false, error: getExtensionErrorMessage(mapped.code, mapped.params) }
     }
 
     const body = payload as { postId?: string }
@@ -562,9 +567,10 @@ async function handleSendEmail(payload: unknown) {
   } catch (error: unknown) {
     if (isRetryableFetchError(error)) {
       await enqueueOfflineAction({ type: "send-email", payload })
-      return { success: false, error: "Queued for retry when back online", queued: true }
+      return { success: false, error: getExtensionErrorMessage("offline_queued"), queued: true }
     }
-    const message = error instanceof Error ? error.message : "Failed to send email"
+    const message =
+      error instanceof Error ? error.message : getExtensionErrorMessage("send_failed")
     console.error("Error sending email:", error)
     return { success: false, error: message }
   }
@@ -583,11 +589,11 @@ async function handleGenerateVariant(payload: { postId: string; alternateTone: s
       body: JSON.stringify(payload),
     })
 
-    const data = await response.json()
+    const data = await readApiError(response)
 
     if (response.status === 401) {
       await handleUnauthorized()
-      throw new Error("Session expired. Please sign in again from the extension popup.")
+      return { success: false, error: getExtensionErrorMessage("session_expired") }
     }
 
     if (response.status === 402) {
@@ -595,12 +601,15 @@ async function handleGenerateVariant(payload: { postId: string; alternateTone: s
     }
 
     if (!response.ok) {
-      throw new Error(data.error || "Failed to generate variant")
+      const mapped = mapApiErrorToExtensionCode(response.status, data, "variant_failed")
+      if (mapped.limitReached) return limitReachedResult(data)
+      return { success: false, error: getExtensionErrorMessage(mapped.code, mapped.params) }
     }
 
     return { success: true, variant: data.variant, cached: data.cached }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to generate variant"
+    const message =
+      error instanceof Error ? error.message : getExtensionErrorMessage("variant_failed")
     console.error("Error generating variant:", error)
     return { success: false, error: message }
   }
@@ -619,20 +628,22 @@ async function handleMarkReplied(payload: { outreachId: string }) {
       body: JSON.stringify(payload),
     })
 
-    const data = await response.json()
+    const data = await readApiError(response)
 
     if (response.status === 401) {
       await handleUnauthorized()
-      throw new Error("Session expired. Please sign in again from the extension popup.")
+      return { success: false, error: getExtensionErrorMessage("session_expired") }
     }
 
     if (!response.ok) {
-      throw new Error(data.error || "Failed to mark as replied")
+      const mapped = mapApiErrorToExtensionCode(response.status, data, "mark_replied_failed")
+      return { success: false, error: getExtensionErrorMessage(mapped.code, mapped.params) }
     }
 
     return { success: true }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to mark as replied"
+    const message =
+      error instanceof Error ? error.message : getExtensionErrorMessage("mark_replied_failed")
     console.error("Error marking replied:", error)
     return { success: false, error: message }
   }

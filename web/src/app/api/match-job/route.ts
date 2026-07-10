@@ -151,7 +151,12 @@ export async function POST(req: Request) {
     })
 
     const responseContent = completion.choices[0]?.message?.content
-    if (!responseContent) throw new Error("No response from OpenAI")
+    if (!responseContent) {
+      return NextResponse.json(
+        { success: false, code: "ai_no_response", error: "Draft AI didn’t get a response from the AI model. Please try again." },
+        { status: 502 }
+      )
+    }
 
     const result = normalizeDraftResult(JSON.parse(responseContent) as DraftResult)
 
@@ -219,8 +224,10 @@ export async function POST(req: Request) {
     return NextResponse.json(draftResultToResponse(savedDraft, false))
 
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error"
     console.error("Match Job Error:", error)
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    return NextResponse.json(
+      { success: false, code: "server_error", error: "Draft AI ran into a problem on our end. Please try again." },
+      { status: 500 }
+    )
   }
 }

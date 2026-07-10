@@ -1,3 +1,5 @@
+import { getExtensionErrorMessage } from "~lib/error-messages"
+
 export function isExtensionContextValid(): boolean {
   try {
     return typeof chrome !== "undefined" && Boolean(chrome.runtime?.id)
@@ -72,7 +74,7 @@ export function showContextInvalidBanner() {
   const el = document.createElement("button")
   el.id = "rp-context-invalid"
   el.type = "button"
-  el.textContent = "Draft AI updated — click to reload page"
+  el.textContent = getExtensionErrorMessage("context_invalid")
   el.style.cssText = [
     "position:fixed",
     "bottom:16px",

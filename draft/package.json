@@ -1,7 +1,7 @@
 {
   "name": "draft-ai",
   "displayName": "Draft AI",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "AI-powered outreach drafts for X and LinkedIn",
   "author": "Jay",
   "scripts": {
@@ -34,6 +34,7 @@
     "typescript": "5.5.3"
   },
   "manifest": {
+    "minimum_chrome_version": "114",
     "host_permissions": [
       "*://*.x.com/*",
       "*://*.twitter.com/*",

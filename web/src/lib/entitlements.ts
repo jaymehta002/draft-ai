@@ -235,16 +235,28 @@ export async function checkEntitlement(
   }
 }
 
+function entitlementBlockedMessage(check: Pick<EntitlementCheck, "reason" | "feature">): string {
+  if (check.reason === "feature_locked") {
+    return "This feature requires Pro. Upgrade to continue."
+  }
+  if (check.feature === "email") {
+    return "Monthly email limit reached. Upgrade to keep sending."
+  }
+  return `Monthly ${check.feature} limit reached. Upgrade to continue.`
+}
+
 /** Standard 402 response body for a blocked metered request. */
 export function limitReachedResponse(check: EntitlementCheck) {
   return Response.json(
     {
-      error: check.reason ?? "limit_reached",
+      success: false,
+      code: check.reason ?? "limit_reached",
       feature: check.feature,
+      upgradeUrl: check.upgradeUrl,
+      error: entitlementBlockedMessage(check),
       used: check.used,
       limit: check.limit,
       tier: check.tier,
-      upgradeUrl: check.upgradeUrl,
     },
     { status: 402 }
   )

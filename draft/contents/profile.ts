@@ -4,6 +4,7 @@ import {
   sendRuntimeMessage,
   showContextInvalidBanner,
 } from "~lib/extension-context"
+import { getExtensionErrorMessage } from "~lib/error-messages"
 import {
   buildLinkedInProfilePostId,
   getLinkedInProfilePublicId,
@@ -16,7 +17,7 @@ export const config: PlasmoCSConfig = {
 }
 
 const BTN_ID = "draft-ai-profile-btn"
-const CONTEXT_INVALID_MSG = "Extension was updated. Refresh this page to use Draft AI."
+const CONTEXT_INVALID_MSG = getExtensionErrorMessage("context_invalid")
 
 const BTN_STYLE = [
   "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
@@ -102,7 +103,7 @@ function createButton(): HTMLButtonElement {
 
 async function handleDraftIntro() {
   if (!isExtensionContextValid()) {
-    showContextInvalidBanner(CONTEXT_INVALID_MSG)
+    showContextInvalidBanner()
     return
   }
 

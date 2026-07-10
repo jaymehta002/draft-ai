@@ -16,6 +16,7 @@ export const config: PlasmoCSConfig = {
     "http://127.0.0.1:3000/extension/connect*",
     "https://draft-ai-ashen.vercel.app/extension/connect*",
     "https://*.vercel.app/extension/connect*",
+    "https://draft-ai.jayymehta.in/extension/connect*",
   ],
   run_at: "document_start",
 }

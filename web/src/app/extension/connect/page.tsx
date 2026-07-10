@@ -7,6 +7,8 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { DraftAIBrand } from "@/components/draft-ai-logo"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { readApiError, toUserErrorMessage } from "@/lib/api-errors"
+import { getWebErrorMessage } from "@/lib/error-messages"
 
 const AUTH_MESSAGE_TYPE = "RECRUIT_PITCH_AUTH"
 const CONNECT_TIMEOUT_MS = 20_000
@@ -82,7 +84,7 @@ function classifyError(status: number | null, code: string | undefined, rawMessa
     return {
       kind: "rate-limited",
       title: "Too many attempts",
-      message: "Wait a minute before trying again.",
+      message: getWebErrorMessage("rate_limited"),
       retryable: true,
     }
   }
@@ -100,7 +102,7 @@ function classifyError(status: number | null, code: string | undefined, rawMessa
     return {
       kind: "server",
       title: "Something went wrong",
-      message: "Draft AI ran into a problem on our end. This is usually temporary.",
+      message: getWebErrorMessage("server_error"),
       retryable: true,
     }
   }
@@ -108,7 +110,7 @@ function classifyError(status: number | null, code: string | undefined, rawMessa
   return {
     kind: "unknown",
     title: "Couldn't connect",
-    message: rawMessage || "An unexpected error occurred.",
+    message: rawMessage || getWebErrorMessage("unknown"),
     retryable: true,
   }
 }
@@ -283,14 +285,19 @@ function ExtensionConnectContent() {
         })
 
         if (!initResponse.ok) {
-          let initData: { code?: string; error?: string } | null = null
-          try {
-            initData = await initResponse.json()
-          } catch {
-            initData = null
-          }
+          const initData = await readApiError(initResponse)
           const info = classifyError(initResponse.status, initData?.code, initData?.error)
-          setPhase({ step: "error", info: { ...info, message: initData?.error || info.message }, attempt })
+          setPhase({
+            step: "error",
+            info: {
+              ...info,
+              message:
+                initData?.code === "rate_limited"
+                  ? getWebErrorMessage("rate_limited", { retryAfterSeconds: initData.retryAfterSeconds })
+                  : toUserErrorMessage(initResponse.status, initData),
+            },
+            attempt,
+          })
           return
         }
 
@@ -314,7 +321,11 @@ function ExtensionConnectContent() {
             setPhase({ step: "success", email: data?.email || sessionUserEmail || "" })
             return
           }
-          setPhase({ step: "error", info: { ...info, message: data?.error || info.message }, attempt })
+          setPhase({
+            step: "error",
+            info: { ...info, message: data ? toUserErrorMessage(response.status, data) : info.message },
+            attempt,
+          })
           return
         }
 

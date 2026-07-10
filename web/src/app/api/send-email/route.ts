@@ -35,6 +35,14 @@ async function buildResumeAttachment(profile: {
 } | null) {
   const originalName = sanitizeAttachmentFileName(profile?.resumeFileName || "resume")
   const storedMimeType = profile?.resumeMimeType?.trim() || null
+  const ensureExtensionForMime = (fileName: string, mimeType: string | null) => {
+    if (!mimeType) return fileName
+    const lower = fileName.toLowerCase()
+    if (mimeType.includes("application/pdf")) {
+      return lower.endsWith(".pdf") ? fileName : `${fileName}.pdf`
+    }
+    return fileName
+  }
   const uploadThingUrl = await resolveUploadThingFileUrl(
     profile?.resumeStorageKey,
     profile?.resumeFileUrl
@@ -45,9 +53,10 @@ async function buildResumeAttachment(profile: {
     if (response.ok) {
       const buffer = Buffer.from(await response.arrayBuffer())
       const responseType = response.headers.get("content-type")?.trim() || null
+      const resolvedMimeType = storedMimeType || responseType || "application/octet-stream"
       return {
-        fileName: originalName,
-        mimeType: storedMimeType || responseType || "application/octet-stream",
+        fileName: ensureExtensionForMime(originalName, resolvedMimeType),
+        mimeType: resolvedMimeType,
         base64Content: chunkBase64(buffer.toString("base64")),
       }
     }
@@ -55,22 +64,16 @@ async function buildResumeAttachment(profile: {
 
   const storedFile = profile?.resumeFileData
   if (storedFile?.length) {
+    const resolvedMimeType = storedMimeType || "application/octet-stream"
     return {
-      fileName: originalName,
-      mimeType: storedMimeType || "application/octet-stream",
+      fileName: ensureExtensionForMime(originalName, resolvedMimeType),
+      mimeType: resolvedMimeType,
       base64Content: chunkBase64(Buffer.from(storedFile).toString("base64")),
     }
   }
 
-  const content = profile?.resumeContent?.trim()
-  if (!content) return null
-
-  const safeBaseName = originalName.replace(/\.[^.]+$/, "") || "resume"
-  return {
-    fileName: safeBaseName.endsWith(".txt") ? safeBaseName : `${safeBaseName}.txt`,
-    mimeType: 'text/plain; charset="UTF-8"',
-    base64Content: chunkBase64(Buffer.from(content, "utf8").toString("base64")),
-  }
+  // Never attach resume as a generated .txt. If we don't have a real file, omit the attachment.
+  return null
 }
 
 function normalizeEmailGreeting(message: string, recipientName: string | null) {
@@ -105,7 +108,13 @@ export async function POST(req: Request) {
 
     const tokenResult = await getGmailSendClient(apiKey.userId)
     if (!tokenResult.ok) {
-      return NextResponse.json({ error: tokenResult.error }, { status: 400 })
+      return NextResponse.json(
+        {
+          code: "gmail_not_connected",
+          error: "Gmail isn’t connected. Reconnect Google from your dashboard.",
+        },
+        { status: 400 }
+      )
     }
 
     const { to, subject, body, postId, postUrl, platform, draftId, variantId, recipientHandle, recipientProfileUrl } = await req.json()
@@ -115,13 +124,22 @@ export async function POST(req: Request) {
     const rawBody = typeof body === "string" ? body : ""
 
     if (!recipientEmail) {
-      return NextResponse.json({ error: "Invalid recipient email" }, { status: 400 })
+      return NextResponse.json(
+        { code: "invalid_recipient_email", error: "Enter a valid recipient email address." },
+        { status: 400 }
+      )
     }
     if (!normalizedSubject || !rawBody.trim()) {
-      return NextResponse.json({ error: "Missing subject or body" }, { status: 400 })
+      return NextResponse.json(
+        { code: "missing_subject_or_body", error: "Add a subject and message body to send this email." },
+        { status: 400 }
+      )
     }
     if (!postId) {
-      return NextResponse.json({ error: "Missing post ID" }, { status: 400 })
+      return NextResponse.json(
+        { code: "missing_post_id", error: "This draft is missing a post ID. Please draft again from the post." },
+        { status: 400 }
+      )
     }
 
     if (draftId) {
@@ -277,8 +295,14 @@ export async function POST(req: Request) {
     })
 
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error"
     console.error("Send Email Error:", error)
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        code: "server_error",
+        error: "Draft AI ran into a problem on our end. Please try again.",
+      },
+      { status: 500 }
+    )
   }
 }

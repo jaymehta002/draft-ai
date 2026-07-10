@@ -28,7 +28,13 @@ export async function POST(req: Request) {
     } = await req.json()
 
     if (!postId || !message) {
-      return NextResponse.json({ error: "Missing postId or message" }, { status: 400 })
+      return NextResponse.json(
+        {
+          code: "missing_post_fields",
+          error: "Missing required fields. Please draft again from the post.",
+        },
+        { status: 400 }
+      )
     }
 
     const sendMeta = await resolveOutreachSendFields(apiKey.userId, draftId, variantId)
@@ -59,8 +65,14 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, sentId: sent.id })
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error"
     console.error("Record outreach error:", error)
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        code: "server_error",
+        error: "Draft AI ran into a problem on our end. Please try again.",
+      },
+      { status: 500 }
+    )
   }
 }

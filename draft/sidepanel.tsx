@@ -14,6 +14,7 @@ import {
 import { persistDraftEdits } from "~lib/draft-sync"
 import { WEB_URL } from "~lib/config"
 import { cn } from "~lib/utils"
+import { getExtensionErrorMessage } from "~lib/error-messages"
 
 function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
   fn: T,
@@ -283,7 +284,10 @@ function SidePanel() {
       } else if (response?.limitReached) {
         setSubmissionState("idle")
         setUpgradeUrl(response.upgradeUrl || `${WEB_URL}/dashboard/profile?tab=billing`)
-        setStatusNote({ tone: "error", text: response.error || "Monthly limit reached" })
+        setStatusNote({
+          tone: "error",
+          text: response.error || getExtensionErrorMessage("limit_reached", { feature: "email" }),
+        })
       } else {
         setSubmissionState("idle")
         setStatusNote({ tone: "error", text: response?.error || "Failed to send email" })
