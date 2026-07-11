@@ -2,6 +2,7 @@ import type { CandidateProfileData } from "@/lib/candidate-profile"
 import {
   buildQuickStepQueue,
   buildStepQueue,
+  canContinueStep,
   resolveStepIndex,
   stepKey,
   type StepId,
@@ -90,7 +91,19 @@ export function restoreStepFlowFromProgress(
 } {
   const aiFilledFields = parseAiFilledFields(progress.aiFilledFields)
   const stepQueue = buildQueueForProgress(profile, progress)
-  const stepIndex = resolveStepIndex(stepQueue, progress.currentStepKey)
+  const savedIndex = resolveStepIndex(stepQueue, progress.currentStepKey)
+
+  // A saved position can point past steps that only became required after
+  // the progress was saved (e.g. new required fields shipped, or a field
+  // reverted to an invalid/corrupted value) — never resume ahead of the
+  // first step the user hasn't actually satisfied.
+  const firstIncompleteIndex = stepQueue.findIndex(
+    (step) => !canContinueStep(step, profile, false)
+  )
+  const stepIndex =
+    firstIncompleteIndex >= 0 && firstIncompleteIndex < savedIndex
+      ? firstIncompleteIndex
+      : savedIndex
 
   return {
     stepQueue,

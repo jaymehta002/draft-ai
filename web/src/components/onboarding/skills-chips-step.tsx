@@ -13,12 +13,15 @@ export function SkillsChipsStep({
   customSkills,
   onChange,
   loading,
+  onSubmit,
 }: {
   confirmed: string[]
   suggested: string[]
   customSkills: string[]
   onChange: (skills: string[]) => void
   loading: boolean
+  /** Called on Enter only when the add-skill input is empty — otherwise Enter adds the typed skill. */
+  onSubmit?: () => void
 }) {
   const [input, setInput] = useState("")
   const allSelected = [...new Set([...confirmed, ...customSkills])]
@@ -105,7 +108,15 @@ export function SkillsChipsStep({
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustom())}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return
+                e.preventDefault()
+                if (input.trim()) {
+                  addCustom()
+                } else {
+                  onSubmit?.()
+                }
+              }}
               placeholder="Add a skill..."
               className="h-12 text-base"
             />

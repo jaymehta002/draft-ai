@@ -1,5 +1,5 @@
 import type { CandidateProfileData } from "@/lib/candidate-profile"
-import { isWorkExperienceValid } from "@/lib/candidate-profile"
+import { isCorruptedValue, isWorkExperienceValid } from "@/lib/candidate-profile"
 import { QUESTION_FIELD_ORDER } from "@/lib/onboarding-fields"
 import { needsGeocodingResolution } from "@/lib/location-lookup"
 
@@ -29,7 +29,7 @@ export function buildStepQueue(
   for (const field of QUESTION_FIELD_ORDER) {
     const value = String(profile[field.key] ?? "").trim()
     const isAiFilled = aiFilledFields.has(field.key)
-    if (!value || isAiFilled) {
+    if (!value || isCorruptedValue(value) || isAiFilled) {
       steps.push({ type: "question", field: field.key })
     }
   }
@@ -53,6 +53,20 @@ const QUICK_ESSENTIAL_FIELDS: (keyof CandidateProfileData)[] = [
   "fullName",
   "currentTitle",
   "yearsExperience",
+  "education",
+]
+
+/**
+ * Quick mode defers work/projects/certs, but the completion gate
+ * (getOnboardingValidationIssues) always requires these — so they must
+ * still be collected somewhere in the quick queue, or "Complete setup"
+ * fails with no way to fix it inline.
+ */
+const QUICK_PREFERENCE_FIELDS: (keyof CandidateProfileData)[] = [
+  "desiredRoles",
+  "salaryExpectation",
+  "workPreference",
+  "availability",
 ]
 
 /** Compressed onboarding for try-first activation — defers work/projects/certs */
@@ -69,13 +83,20 @@ export function buildQuickStepQueue(
 
   for (const field of QUICK_ESSENTIAL_FIELDS) {
     const value = String(profile[field] ?? "").trim()
-    if (!value || aiFilledFields.has(field)) {
+    if (!value || isCorruptedValue(value) || aiFilledFields.has(field)) {
       steps.push({ type: "question", field })
     }
   }
 
   if (!profile.skills.trim()) {
     steps.push("skills")
+  }
+
+  for (const field of QUICK_PREFERENCE_FIELDS) {
+    const value = String(profile[field] ?? "").trim()
+    if (!value || isCorruptedValue(value) || aiFilledFields.has(field)) {
+      steps.push({ type: "question", field })
+    }
   }
 
   steps.push("tone", "whats-next")
@@ -169,7 +190,8 @@ export function canContinueStep(step: StepId, profile: CandidateProfileData, ski
 
   const field = getStepField(step)
   if (field) {
-    return String(profile[field] ?? "").trim() !== ""
+    const value = String(profile[field] ?? "").trim()
+    return value !== "" && !isCorruptedValue(value)
   }
   return true
 }

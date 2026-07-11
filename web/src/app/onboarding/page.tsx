@@ -10,6 +10,9 @@ import type { CandidateProfileData } from "@/lib/candidate-profile"
 import {
   emptyProfile,
   isOnboardingComplete,
+  isCorruptedValue,
+  getOnboardingValidationIssues,
+  formatOnboardingValidationError,
   syncLegacyFields,
   profileToFormData,
   PROFILE_CONFLICT_ERROR,
@@ -96,6 +99,23 @@ function OnboardingContent() {
   const whatsNextFinalizedRef = useRef(false)
   const { startUpload } = useUploadThing("resumeUploader")
 
+  // The authoritative optimistic-concurrency token, mirrored outside React
+  // state so it updates the instant a save resolves rather than waiting for
+  // a re-render. Two saves fired close together (e.g. the initial progress
+  // save right after landing on the first step, immediately followed by
+  // Enter/Continue) would otherwise both read the same stale `profile.version`
+  // from their render closure and the second would lose the server's
+  // concurrency check. Every outgoing save stamps this ref's value onto the
+  // payload right before sending, so it always uses the freshest known version.
+  const versionRef = useRef(profile.version)
+  const withCurrentVersion = useCallback(
+    (data: CandidateProfileData): CandidateProfileData => ({
+      ...data,
+      version: versionRef.current,
+    }),
+    []
+  )
+
   const currentStep = stepQueue[stepIndex] ?? "review"
   const progress =
     flowPhase === "resume"
@@ -131,10 +151,15 @@ function OnboardingContent() {
       progress: OnboardingProgress,
       profileData: CandidateProfileData = profile
     ) => {
-      const result = await saveCandidateProfile(profileToFormData(profileData), false, progress)
+      const result = await saveCandidateProfile(
+        profileToFormData(withCurrentVersion(profileData)),
+        false,
+        progress
+      )
+      versionRef.current = result.version
       setProfile((prev) => ({ ...prev, version: result.version }))
     },
-    [profile]
+    [profile, withCurrentVersion]
   )
 
   const persistStepEntry = useCallback(
@@ -144,13 +169,18 @@ function OnboardingContent() {
       profileData: CandidateProfileData = profile
     ) => {
       if (nextStep === "whats-next" && isOnboardingComplete(profileData)) {
-        const result = await saveCandidateProfile(profileToFormData(profileData), true, progress)
+        const result = await saveCandidateProfile(
+          profileToFormData(withCurrentVersion(profileData)),
+          true,
+          progress
+        )
+        versionRef.current = result.version
         setProfile((prev) => ({ ...prev, version: result.version }))
         return
       }
       await persistProgress(progress, profileData)
     },
-    [persistProgress, profile]
+    [persistProgress, profile, withCurrentVersion]
   )
 
   useEffect(() => {
@@ -159,7 +189,7 @@ function OnboardingContent() {
 
     whatsNextFinalizedRef.current = true
     void saveCandidateProfile(
-      profileToFormData(profile),
+      profileToFormData(withCurrentVersion(profile)),
       true,
       toOnboardingProgress({
         mode: onboardingMode,
@@ -170,12 +200,13 @@ function OnboardingContent() {
       })
     )
       .then((result) => {
+        versionRef.current = result.version
         setProfile((prev) => ({ ...prev, version: result.version }))
       })
       .catch(() => {
         whatsNextFinalizedRef.current = false
       })
-  }, [currentStep, profile, onboardingMode, aiFilledFields, revealDismissed])
+  }, [currentStep, profile, onboardingMode, aiFilledFields, revealDismissed, withCurrentVersion])
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -195,6 +226,7 @@ function OnboardingContent() {
           return
         }
         if (data?.profile) {
+          versionRef.current = data.profile.version
           setProfile(data.profile)
         } else if (data?.name) {
           setProfile((prev) => ({ ...prev, fullName: data.name ?? "" }))
@@ -237,7 +269,10 @@ function OnboardingContent() {
     setProfile((prev) => syncLegacyFields({ ...prev, ...patch }))
   }, [])
 
-  const buildFormData = useCallback(() => profileToFormData(profile), [profile])
+  const buildFormData = useCallback(
+    () => profileToFormData(withCurrentVersion(profile)),
+    [profile, withCurrentVersion]
+  )
 
   const fetchSkillSuggestions = useCallback(async () => {
     if (skillsFetched || !profile.currentTitle.trim()) return
@@ -351,16 +386,25 @@ function OnboardingContent() {
       const queue = startStepFlow(nextProfile, filled, filled.size > 0, urlMode)
       const firstStep = queue[0]
       if (firstStep) {
-        await persistProgress(
-          toOnboardingProgress({
-            mode: urlMode,
-            flowPhase: "steps",
-            currentStep: firstStep,
-            aiFilledFields: filled,
-            revealDismissed: false,
-          }),
-          nextProfile
-        )
+        // startStepFlow already flipped flowPhase to "steps", making the
+        // footer's Continue button (and Enter-to-continue) interactive —
+        // hold `saving` until this save lands so a fast next action can't
+        // race it with a stale version and trip the conflict guard.
+        setSaving(true)
+        try {
+          await persistProgress(
+            toOnboardingProgress({
+              mode: urlMode,
+              flowPhase: "steps",
+              currentStep: firstStep,
+              aiFilledFields: filled,
+              revealDismissed: false,
+            }),
+            nextProfile
+          )
+        } finally {
+          setSaving(false)
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to read resume")
@@ -374,6 +418,8 @@ function OnboardingContent() {
     const firstStep = queue[0]
     if (!firstStep) return
 
+    // See the matching comment in handleResumeUpload — same race, same guard.
+    setSaving(true)
     try {
       await persistProgress(
         toOnboardingProgress({
@@ -386,6 +432,8 @@ function OnboardingContent() {
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save progress")
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -414,6 +462,14 @@ function OnboardingContent() {
       const nextStep = nextQueue[nextIndex]
       if (!nextStep) {
         throw new Error("Invalid step")
+      }
+
+      if (nextStep === "whats-next") {
+        const issues = getOnboardingValidationIssues(profile)
+        if (issues.length > 0) {
+          setError(formatOnboardingValidationError(issues))
+          return
+        }
       }
 
       await persistStepEntry(
@@ -464,8 +520,15 @@ function OnboardingContent() {
   }
 
   const handleComplete = async () => {
-    setSaving(true)
     setError(null)
+
+    const issues = getOnboardingValidationIssues(profile)
+    if (issues.length > 0) {
+      setError(formatOnboardingValidationError(issues))
+      return
+    }
+
+    setSaving(true)
     try {
       await saveCandidateProfile(buildFormData(), true)
       router.push("/dashboard/extension")
@@ -473,6 +536,7 @@ function OnboardingContent() {
       if (err instanceof Error && err.message === PROFILE_CONFLICT_ERROR) {
         const fresh = await getOnboardingData().catch(() => null)
         if (fresh?.profile) {
+          versionRef.current = fresh.profile.version
           setProfile((prev) => ({ ...prev, version: fresh.profile!.version }))
         }
         setError("Your profile was updated elsewhere while you were editing. We've refreshed it — your changes here are still intact, just try again.")
@@ -510,12 +574,25 @@ function OnboardingContent() {
   const showBack = flowPhase === "steps" && stepIndex > 0
   const showFooter = flowPhase === "steps"
 
+  // Enter-to-continue: mirrors the footer's Continue/Complete button so pressing
+  // Enter in a step's input does exactly what clicking the button would.
+  const handleStepSubmit = () => {
+    if (saving || !canContinue()) return
+    if (isLastStep) {
+      void handleComplete()
+    } else {
+      void goNext()
+    }
+  }
+
   const questionConfig =
     typeof currentStep === "object" && currentStep.type === "question"
       ? QUESTION_FIELD_ORDER.find((f) => f.key === currentStep.field)
       : null
 
   const currentField = questionConfig?.key
+  const currentFieldRawValue = currentField ? String(profile[currentField] ?? "") : ""
+  const currentFieldValue = isCorruptedValue(currentFieldRawValue) ? "" : currentFieldRawValue
 
   return (
     <OnboardingShell
@@ -544,7 +621,7 @@ function OnboardingContent() {
                   {saving ? "Finishing..." : (
                     <>
                       <Check className="h-4 w-4" />
-                      {extensionSetup?.extensionConnected
+                      {extensionSetup?.steps.install && extensionSetup?.steps.connect
                         ? "Finish and open dashboard"
                         : "Complete setup"}
                     </>
@@ -593,6 +670,7 @@ function OnboardingContent() {
             value={profile.location}
             onChange={(v) => updateField("location", v)}
             aiFilled={aiFilledFields.has("location")}
+            onSubmit={handleStepSubmit}
           />
         ) : currentStep === "skills" ? (
           <SkillsChipsStep
@@ -609,6 +687,7 @@ function OnboardingContent() {
               setSkillConfirmed(skills)
               updateField("skills", skills.join(", "))
             }}
+            onSubmit={handleStepSubmit}
           />
         ) : currentStep === "work" ? (
           <WorkExperienceStep
@@ -649,9 +728,10 @@ function OnboardingContent() {
           <QuestionStep
             key={stepKey(currentStep)}
             config={questionConfig}
-            value={String(profile[currentField] ?? "")}
+            value={currentFieldValue}
             onChange={(v) => updateField(currentField, v)}
             aiFilled={aiFilledFields.has(currentField)}
+            onSubmit={handleStepSubmit}
           />
         ) : null}
       </AnimatePresence>

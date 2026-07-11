@@ -3,6 +3,7 @@
 import { motion } from "framer-motion"
 import type { FieldConfig } from "@/lib/onboarding-fields"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
+import { isCorruptedValue } from "@/lib/candidate-profile"
 import { AiInput, AiTextarea } from "./ai-field"
 import {
   Select,
@@ -17,13 +18,21 @@ export function QuestionStep({
   value,
   onChange,
   aiFilled,
+  onSubmit,
 }: {
   config: FieldConfig
   value: string
   onChange: (value: string) => void
   aiFilled?: boolean
+  /** Called on Enter in single-line inputs — textareas keep Enter for newlines, and the select handles Enter itself. */
+  onSubmit?: () => void
 }) {
   const emptySelectValue = "__empty__"
+  const handleEnter = (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter") return
+    e.preventDefault()
+    onSubmit?.()
+  }
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -71,6 +80,7 @@ export function QuestionStep({
           min={config.inputType === "number" ? "0" : undefined}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleEnter}
           placeholder={config.placeholder}
           autoFocus
         />
@@ -90,7 +100,12 @@ export function ExtractionRevealStep({
 }) {
   const filled = fields.filter((f) => {
     const val = profile[f.key]
-    return typeof val === "string" && val.trim() && aiFilledFields.has(f.key)
+    return (
+      typeof val === "string" &&
+      val.trim() &&
+      !isCorruptedValue(val) &&
+      aiFilledFields.has(f.key)
+    )
   })
 
   if (filled.length === 0) {

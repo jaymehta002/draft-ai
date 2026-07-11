@@ -58,10 +58,16 @@ function mergeStatus(
   const extensionKeyIssued = server?.extensionKeyIssued ?? false
   const extensionConnected = server?.extensionConnected ?? false
   const hasDrafted = server?.hasDrafted ?? false
-  const extensionInstalled =
-    Boolean(ping?.installed) || extensionKeyIssued || extensionConnected
 
-  const connect = extensionConnected || Boolean(ping?.connected)
+  // Install must come from the extension itself responding to a ping — an
+  // issued API key or a stale "connected" row only mean setup was started
+  // somewhere, not that the extension is actually present in this browser.
+  const extensionInstalled = Boolean(ping?.installed)
+
+  // The server's extensionConnected (recent heartbeat) is the sole source of
+  // truth — a ping's "connected" flag can be reported optimistically by the
+  // extension before the backend link is real, so it's never enough alone.
+  const connect = extensionConnected
 
   return {
     extensionInstalled,

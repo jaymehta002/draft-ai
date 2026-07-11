@@ -79,6 +79,54 @@ function asConfidence(value: unknown): "high" | "medium" | "low" {
   return "medium"
 }
 
+const EDUCATION_INSTITUTION_KEYS = ["institution", "school", "university", "college", "name"]
+const EDUCATION_DEGREE_KEYS = ["degree", "field", "field_of_study", "fieldOfStudy", "program"]
+const EDUCATION_YEAR_KEYS = ["year", "end_year", "endYear", "graduation_year", "graduationYear"]
+
+function firstStringField(o: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const v = asStringOrNull(o[key])
+    if (v) return v
+  }
+  return ""
+}
+
+/** Formats a single education entry object as "Institution — Degree (Year)", omitting missing parts. */
+function formatEducationEntry(o: Record<string, unknown>): string {
+  const institution = firstStringField(o, EDUCATION_INSTITUTION_KEYS)
+  const degree = firstStringField(o, EDUCATION_DEGREE_KEYS)
+  const year = firstStringField(o, EDUCATION_YEAR_KEYS)
+
+  const parts = [institution, degree].filter(Boolean)
+  const label = parts.join(" — ")
+  if (!label) return ""
+  return year ? `${label} (${year})` : label
+}
+
+/** Lenient education parser — the LLM sometimes returns objects instead of strings per entry. */
+export function parseEducationArray(value: unknown): string[] {
+  if (!value) return []
+
+  const items = Array.isArray(value) ? value : typeof value === "string" ? [value] : []
+
+  return items
+    .map((item): string => {
+      if (typeof item === "string") return item.trim()
+      if (item && typeof item === "object") {
+        return formatEducationEntry(item as Record<string, unknown>)
+      }
+      return ""
+    })
+    .map((s) => (isCorruptedEducationValue(s) ? "" : s))
+    .filter(Boolean)
+}
+
+/** True when a value has been mangled into the literal string produced by `String({...})`. */
+export function isCorruptedEducationValue(value: unknown): boolean {
+  if (typeof value !== "string") return false
+  return /\[object Object\]/i.test(value)
+}
+
 function parseWorkExperienceArray(value: unknown): WorkExperienceExtraction[] {
   if (!Array.isArray(value)) return []
 
@@ -121,7 +169,7 @@ export function parseResumeExtraction(raw: unknown): ResumeExtraction | null {
     city: asStringOrNull(o.city),
     current_position: asStringOrNull(o.current_position ?? o.currentPosition),
     years_experience: asNumberOrNull(o.years_experience ?? o.yearsExperience),
-    education: asStringArray(o.education),
+    education: parseEducationArray(o.education),
     work_experience: workExperience,
     past_companies: asStringArray(o.past_companies ?? o.pastCompanies),
     skills: asStringArray(o.skills),

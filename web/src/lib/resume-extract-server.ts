@@ -56,7 +56,7 @@ Rules:
 - is_current: true only for the role the candidate currently holds. When is_current is true, end_month and end_year must be null.
 - Order work_experience most recent first.
 - For years_experience, calculate from work history dates if stated; otherwise null.
-- education: one entry per degree/program with institution and year if available.
+- education: array of PLAIN STRINGS only, never objects — one formatted string per degree/program, e.g. "Massachusetts Institute of Technology — B.S. Computer Science (2018)". Do not return {"institution": ..., "degree": ...} objects.
 - skills: short skill strings only (e.g. "React", "Python").
 - city: the candidate's current city only, not full address.
 - confidence: "high" if most key fields found, "medium" if partial, "low" if very little extractable.

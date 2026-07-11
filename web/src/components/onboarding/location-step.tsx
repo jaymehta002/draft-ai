@@ -16,10 +16,13 @@ export function LocationStep({
   value,
   onChange,
   aiFilled,
+  onSubmit,
 }: {
   value: string
   onChange: (value: string) => void
   aiFilled?: boolean
+  /** Called on Enter only when there's no open suggestion to select — never overrides suggestion selection. */
+  onSubmit?: () => void
 }) {
   const [query, setQuery] = useState(
     needsGeocodingResolution(value) ? value : value.split(",")[0]?.trim() ?? value
@@ -111,6 +114,9 @@ export function LocationStep({
               if (e.key === "ArrowDown" && suggestions.length > 0) {
                 e.preventDefault()
                 setOpen(true)
+              } else if (e.key === "Enter") {
+                e.preventDefault()
+                onSubmit?.()
               }
               return
             }

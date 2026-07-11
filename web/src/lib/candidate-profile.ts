@@ -205,6 +205,12 @@ export function syncLegacyFields(profile: CandidateProfileData): CandidateProfil
   }
 }
 
+/** True when a value has been mangled into the literal string produced by `String({...})`. */
+export function isCorruptedValue(value: unknown): boolean {
+  if (typeof value !== "string") return false
+  return /\[object Object\]/i.test(value)
+}
+
 export function isWorkExperienceValid(entry: WorkExperienceEntry): boolean {
   if (!entry.title.trim() || !entry.company.trim() || !entry.description.trim()) return false
   if (!entry.joinMonth || !entry.joinYear) return false
@@ -492,7 +498,7 @@ export function getOnboardingValidationIssues(
 
   const scalarIssues = REQUIRED_SCALAR_FIELDS.flatMap((field) => {
     const value = synced[field]
-    if (typeof value === "string" && value.trim()) return []
+    if (typeof value === "string" && value.trim() && !isCorruptedValue(value)) return []
 
     const meta = REQUIRED_FIELD_META[field]
     return [
