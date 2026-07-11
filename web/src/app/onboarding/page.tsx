@@ -1,13 +1,13 @@
 "use client"
 
 import { useSession } from "next-auth/react"
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { AnimatePresence } from "framer-motion"
 import { ChevronLeft, ChevronRight, Check } from "lucide-react"
 import { getOnboardingData, saveCandidateProfile } from "../actions"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
-import { emptyProfile, syncLegacyFields, profileToFormData } from "@/lib/candidate-profile"
+import { emptyProfile, isOnboardingComplete, syncLegacyFields, profileToFormData } from "@/lib/candidate-profile"
 import { mapExtractionToProfile } from "@/lib/resume-extract"
 import { extractTextFromFile } from "@/lib/pdf-extract"
 import {
@@ -23,9 +23,15 @@ import {
   canContinueStep,
   type StepId,
 } from "@/lib/onboarding-steps"
+import {
+  restoreStepFlowFromProgress,
+  toOnboardingProgress,
+  type OnboardingProgress,
+} from "@/lib/onboarding-progress"
 import { ToneStep } from "@/components/onboarding/tone-step"
 import { PreviewDraftStep } from "@/components/onboarding/preview-draft-step"
 import { WhatsNextStep } from "@/components/onboarding/whats-next-step"
+import type { ExtensionSetupStatus } from "@/hooks/use-extension-setup-status"
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell"
 import { ResumeUploadStep } from "@/components/onboarding/resume-upload-step"
 import {
@@ -63,11 +69,13 @@ function OnboardingContent() {
   const { status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const isQuickMode = searchParams.get("full") !== "true"
+  const urlMode = searchParams.get("full") === "true" ? "full" : "quick"
+  const [onboardingMode, setOnboardingMode] = useState<"quick" | "full">(urlMode)
   const [profile, setProfile] = useState<CandidateProfileData>(emptyProfileState)
   const [aiFilledFields, setAiFilledFields] = useState<Set<keyof CandidateProfileData>>(
     new Set()
   )
+  const [revealDismissed, setRevealDismissed] = useState(false)
   const [flowPhase, setFlowPhase] = useState<FlowPhase>("resume")
   const [stepQueue, setStepQueue] = useState<StepId[]>([])
   const [stepIndex, setStepIndex] = useState(0)
@@ -79,6 +87,8 @@ function OnboardingContent() {
   const [skillSuggested, setSkillSuggested] = useState<string[]>([])
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [skillsFetched, setSkillsFetched] = useState(false)
+  const [extensionSetup, setExtensionSetup] = useState<ExtensionSetupStatus | null>(null)
+  const whatsNextFinalizedRef = useRef(false)
   const { startUpload } = useUploadThing("resumeUploader")
 
   const currentStep = stepQueue[stepIndex] ?? "review"
@@ -95,18 +105,66 @@ function OnboardingContent() {
     (
       nextProfile: CandidateProfileData,
       filled: Set<keyof CandidateProfileData>,
-      includeReveal: boolean
-    ) => {
-      setStepQueue(
-        isQuickMode
+      includeReveal: boolean,
+      mode: "quick" | "full" = onboardingMode
+    ): StepId[] => {
+      const queue =
+        mode === "quick"
           ? buildQuickStepQueue(nextProfile, filled, { includeReveal })
           : buildStepQueue(nextProfile, filled, { includeReveal })
-      )
+      setOnboardingMode(mode)
+      setStepQueue(queue)
       setStepIndex(0)
       setFlowPhase("steps")
+      return queue
     },
-    [isQuickMode]
+    [onboardingMode]
   )
+
+  const persistProgress = useCallback(
+    async (
+      progress: OnboardingProgress,
+      profileData: CandidateProfileData = profile
+    ) => {
+      await saveCandidateProfile(profileToFormData(profileData), false, progress)
+    },
+    [profile]
+  )
+
+  const persistStepEntry = useCallback(
+    async (
+      nextStep: StepId,
+      progress: OnboardingProgress,
+      profileData: CandidateProfileData = profile
+    ) => {
+      if (nextStep === "whats-next" && isOnboardingComplete(profileData)) {
+        await saveCandidateProfile(profileToFormData(profileData), true, progress)
+        return
+      }
+      await persistProgress(progress, profileData)
+    },
+    [persistProgress, profile]
+  )
+
+  useEffect(() => {
+    if (currentStep !== "whats-next" || whatsNextFinalizedRef.current) return
+    if (!isOnboardingComplete(profile)) return
+
+    whatsNextFinalizedRef.current = true
+    void saveCandidateProfile(
+      profileToFormData(profile),
+      true,
+      toOnboardingProgress({
+        mode: onboardingMode,
+        flowPhase: "steps",
+        currentStep: "whats-next",
+        aiFilledFields,
+        revealDismissed,
+      })
+    ).catch(() => {
+      whatsNextFinalizedRef.current = false
+    })
+  }, [currentStep, profile, onboardingMode, aiFilledFields, revealDismissed])
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -127,11 +185,21 @@ function OnboardingContent() {
         }
         if (data?.profile) {
           setProfile(data.profile)
-          if (data.profile.resumeContent.trim()) {
-            startStepFlow(data.profile, new Set(), false)
-          }
         } else if (data?.name) {
           setProfile((prev) => ({ ...prev, fullName: data.name ?? "" }))
+        }
+
+        const savedProgress = data?.onboardingProgress
+        if (savedProgress?.flowPhase === "steps" && data?.profile) {
+          const restored = restoreStepFlowFromProgress(data.profile, savedProgress)
+          setOnboardingMode(savedProgress.mode)
+          setStepQueue(restored.stepQueue)
+          setStepIndex(restored.stepIndex)
+          setAiFilledFields(restored.aiFilledFields)
+          setRevealDismissed(restored.revealDismissed)
+          setFlowPhase("steps")
+        } else if (data?.profile?.resumeContent.trim()) {
+          startStepFlow(data.profile, new Set(), false, urlMode)
         }
         setLoading(false)
       })
@@ -145,7 +213,7 @@ function OnboardingContent() {
     return () => {
       cancelled = true
     }
-  }, [status, router, startStepFlow])
+  }, [status, router, startStepFlow, urlMode])
 
   const updateField = useCallback(
     (field: keyof CandidateProfileData, value: string) => {
@@ -268,44 +336,92 @@ function OnboardingContent() {
 
       setProfile(nextProfile)
       setAiFilledFields(filled)
-      startStepFlow(nextProfile, filled, filled.size > 0)
+      setRevealDismissed(false)
+      const queue = startStepFlow(nextProfile, filled, filled.size > 0, urlMode)
+      const firstStep = queue[0]
+      if (firstStep) {
+        await persistProgress(
+          toOnboardingProgress({
+            mode: urlMode,
+            flowPhase: "steps",
+            currentStep: firstStep,
+            aiFilledFields: filled,
+            revealDismissed: false,
+          }),
+          nextProfile
+        )
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to read resume")
       setFlowPhase("resume")
     }
   }
 
-  const handleManualEntry = () => {
+  const handleManualEntry = async () => {
     setError(null)
-    startStepFlow(profile, new Set(), false)
-  }
+    const queue = startStepFlow(profile, new Set(), false, urlMode)
+    const firstStep = queue[0]
+    if (!firstStep) return
 
-  const saveDraft = async () => {
-    await saveCandidateProfile(buildFormData(), false)
+    try {
+      await persistProgress(
+        toOnboardingProgress({
+          mode: urlMode,
+          flowPhase: "steps",
+          currentStep: firstStep,
+          aiFilledFields: new Set(),
+          revealDismissed: false,
+        })
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save progress")
+    }
   }
 
   const goNext = async () => {
     setError(null)
     setSaving(true)
     try {
-      // Clear AI highlight on fields the user just confirmed
       const field = getStepField(currentStep)
+      const nextAiFilledFields = new Set(aiFilledFields)
       if (field) {
-        setAiFilledFields((prev) => {
-          const next = new Set(prev)
-          next.delete(field)
-          return next
-        })
+        nextAiFilledFields.delete(field)
       }
 
-      await saveDraft()
+      let nextQueue = stepQueue
+      let nextIndex: number
+      let nextRevealDismissed = revealDismissed
 
       if (currentStep === "reveal") {
-        setStepQueue((prev) => prev.slice(1))
-        setStepIndex(0)
+        nextQueue = stepQueue.slice(1)
+        nextIndex = 0
+        nextRevealDismissed = true
       } else {
-        setStepIndex((prev) => Math.min(prev + 1, stepQueue.length - 1))
+        nextIndex = Math.min(stepIndex + 1, stepQueue.length - 1)
       }
+
+      const nextStep = nextQueue[nextIndex]
+      if (!nextStep) {
+        throw new Error("Invalid step")
+      }
+
+      await persistStepEntry(
+        nextStep,
+        toOnboardingProgress({
+          mode: onboardingMode,
+          flowPhase: "steps",
+          currentStep: nextStep,
+          aiFilledFields: nextAiFilledFields,
+          revealDismissed: nextRevealDismissed,
+        })
+      )
+
+      setAiFilledFields(nextAiFilledFields)
+      setRevealDismissed(nextRevealDismissed)
+      if (currentStep === "reveal") {
+        setStepQueue(nextQueue)
+      }
+      setStepIndex(nextIndex)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save progress")
     } finally {
@@ -313,9 +429,50 @@ function OnboardingContent() {
     }
   }
 
-  const goBack = () => {
+  const goBack = async () => {
     setError(null)
-    setStepIndex((prev) => Math.max(prev - 1, 0))
+    const nextIndex = Math.max(stepIndex - 1, 0)
+    const nextStep = stepQueue[nextIndex]
+    if (!nextStep) return
+
+    setStepIndex(nextIndex)
+    try {
+      await persistProgress(
+        toOnboardingProgress({
+          mode: onboardingMode,
+          flowPhase: "steps",
+          currentStep: nextStep,
+          aiFilledFields,
+          revealDismissed,
+        })
+      )
+    } catch (err) {
+      setStepIndex(stepIndex)
+      setError(err instanceof Error ? err.message : "Failed to save progress")
+    }
+  }
+
+  const handlePreviewSkip = async () => {
+    const nextIndex = stepIndex + 1
+    const nextStep = stepQueue[nextIndex]
+    if (!nextStep) return
+
+    setStepIndex(nextIndex)
+    try {
+      await persistStepEntry(
+        nextStep,
+        toOnboardingProgress({
+          mode: onboardingMode,
+          flowPhase: "steps",
+          currentStep: nextStep,
+          aiFilledFields,
+          revealDismissed,
+        })
+      )
+    } catch (err) {
+      setStepIndex(stepIndex)
+      setError(err instanceof Error ? err.message : "Failed to save progress")
+    }
   }
 
   const handleComplete = async () => {
@@ -391,7 +548,9 @@ function OnboardingContent() {
                   {saving ? "Finishing..." : (
                     <>
                       <Check className="h-4 w-4" />
-                      Complete setup
+                      {extensionSetup?.extensionConnected
+                        ? "Finish and open dashboard"
+                        : "Complete setup"}
                     </>
                   )}
                 </Button>
@@ -483,10 +642,12 @@ function OnboardingContent() {
         ) : currentStep === "preview-draft" ? (
           <PreviewDraftStep
             key="preview-draft"
-            onSkip={() => setStepIndex((prev) => prev + 1)}
+            onSkip={() => {
+              void handlePreviewSkip()
+            }}
           />
         ) : currentStep === "whats-next" ? (
-          <WhatsNextStep key="whats-next" />
+          <WhatsNextStep key="whats-next" onStatusChange={setExtensionSetup} />
         ) : currentStep === "review" ? (
           <ReviewStep
             key="review"

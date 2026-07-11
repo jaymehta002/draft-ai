@@ -84,6 +84,40 @@ export function buildQuickStepQueue(
   return steps
 }
 
+/** Canonical step order for forward-scan fallback when a saved stepKey is missing from the rebuilt queue. */
+const CANONICAL_STEP_ORDER: string[] = [
+  "reveal",
+  ...QUESTION_FIELD_ORDER.map((field) => `question:${field.key}`),
+  "location",
+  "skills",
+  "work",
+  "projects",
+  "certificates",
+  "review",
+  "tone",
+  "preview-draft",
+  "whats-next",
+]
+
+export function findStepIndex(queue: StepId[], key: string): number {
+  return queue.findIndex((step) => stepKey(step) === key)
+}
+
+export function resolveStepIndex(queue: StepId[], key: string): number {
+  const direct = findStepIndex(queue, key)
+  if (direct >= 0) return direct
+
+  const savedOrder = CANONICAL_STEP_ORDER.indexOf(key)
+  if (savedOrder < 0 || queue.length === 0) return 0
+
+  for (let i = 0; i < queue.length; i++) {
+    const queueOrder = CANONICAL_STEP_ORDER.indexOf(stepKey(queue[i]))
+    if (queueOrder >= savedOrder) return i
+  }
+
+  return Math.max(queue.length - 1, 0)
+}
+
 export function stepKey(step: StepId): string {
   if (typeof step === "string") return step
   return `question:${step.field}`

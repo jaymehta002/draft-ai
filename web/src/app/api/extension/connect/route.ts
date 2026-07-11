@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { createUserApiKey } from "@/lib/api-key"
 import { consumeConnectToken, isValidConnectState } from "@/lib/connect-token"
+import { canConnectExtension } from "@/lib/extension-connect"
 import { prisma } from "@/lib/prisma"
 
 export async function POST(req: Request) {
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
       where: { userId: session.user.id },
     })
 
-    if (!profile?.onboardingComplete) {
+    if (!canConnectExtension(profile)) {
       return NextResponse.json(
         {
           error: "Complete your profile onboarding before connecting the extension",

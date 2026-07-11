@@ -1,6 +1,7 @@
 "use server"
 
 import { cache } from "react"
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
@@ -13,6 +14,8 @@ import {
   syncLegacyFields,
   toCandidateProfileData,
 } from "@/lib/candidate-profile"
+import type { OnboardingProgress } from "@/lib/onboarding-progress"
+import { parseOnboardingProgress } from "@/lib/onboarding-progress"
 import {
   accountHasFullGmailAccess,
   accountHasGmailReadonly,
@@ -21,6 +24,7 @@ import {
 } from "@/lib/gmail-scopes"
 import { getEmailLifecycleState, getOutreachLifecycleState } from "@/lib/outreach-state"
 import { getPipelineColumnForOutreach, isFollowUpEligible } from "@/lib/pipeline"
+import { canConnectExtension } from "@/lib/extension-connect"
 import { resolvePostUrl } from "@/lib/post-url"
 import { utapi } from "@/lib/uploadthing-server"
 
@@ -34,7 +38,11 @@ async function getAuthenticatedUser() {
   return user
 }
 
-export async function saveCandidateProfile(formData: FormData, completeOnboarding = false) {
+export async function saveCandidateProfile(
+  formData: FormData,
+  completeOnboarding = false,
+  onboardingProgress?: OnboardingProgress | null
+) {
   const user = await getAuthenticatedUser()
   const data = syncLegacyFields(parseCandidateFormData(formData))
   const yearsExperience = data.yearsExperience ? parseInt(data.yearsExperience, 10) : null
@@ -84,6 +92,12 @@ export async function saveCandidateProfile(formData: FormData, completeOnboardin
     draftLength: data.draftLength || "medium",
     outreachLanguage: data.outreachLanguage || "en",
     onboardingComplete: completeOnboarding ? onboardingComplete : undefined,
+    onboardingProgress:
+      completeOnboarding
+        ? Prisma.DbNull
+        : onboardingProgress !== undefined
+          ? (onboardingProgress as Prisma.InputJsonValue)
+          : undefined,
   }
 
   await prisma.candidateProfile.upsert({
@@ -786,6 +800,7 @@ export async function getOnboardingData() {
       ? toCandidateProfileData(user.candidateProfile)
       : null,
     onboardingComplete: user.candidateProfile?.onboardingComplete ?? false,
+    onboardingProgress: parseOnboardingProgress(user.candidateProfile?.onboardingProgress),
   }
 }
 
@@ -803,7 +818,7 @@ export async function connectExtension(state: string) {
     where: { userId: session.user.id },
   })
 
-  if (!profile?.onboardingComplete) {
+  if (!canConnectExtension(profile)) {
     throw new Error("Complete your profile onboarding before connecting the extension")
   }
 

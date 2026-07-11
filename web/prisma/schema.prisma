@@ -226,6 +226,7 @@ model CandidateProfile {
   draftLength        String?  @default("medium")
   outreachLanguage   String?  @default("en")
   onboardingComplete Boolean  @default(false)
+  onboardingProgress Json?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
