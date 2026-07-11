@@ -23,7 +23,7 @@ export function HowItWorksSection() {
           <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary">
             How it works
           </p>
-          <h2 className="mt-3 max-w-2xl font-serif text-3xl tracking-tight sm:text-4xl">
+          <h2 className="mt-3 max-w-2xl font-display text-3xl tracking-tight sm:text-4xl">
             From a post to a message worth sending, without leaving the page.
           </h2>
         </ScrollReveal>
@@ -37,7 +37,7 @@ export function HowItWorksSection() {
                 </span>
                 <span className="h-px flex-1 bg-slate-100" />
               </div>
-              <h3 className="font-serif text-xl tracking-tight text-foreground">{step.title}</h3>
+              <h3 className="font-display text-xl tracking-tight text-foreground">{step.title}</h3>
               <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
             </StaggerItem>
           ))}

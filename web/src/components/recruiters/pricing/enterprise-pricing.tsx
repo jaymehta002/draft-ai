@@ -24,24 +24,24 @@ export function EnterprisePricing() {
               }`}
             >
               {tier.highlighted && (
-                <span className="mb-3 inline-flex w-fit rounded-full bg-[#1447e6]/20 px-3 py-1 text-xs font-semibold text-[#5085fb]">
+                <span className="mb-3 inline-flex w-fit rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
                   Most Popular
                 </span>
               )}
-              <h3 className="font-serif text-xl text-[var(--recruit-text)]">{tier.name}</h3>
-              <p className="mt-1 text-sm text-[var(--recruit-muted)]">{tier.tagline}</p>
-              <p className="mt-4 font-serif text-3xl text-[var(--recruit-text)]">
+              <h3 className="font-display text-xl text-foreground">{tier.name}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{tier.tagline}</p>
+              <p className="mt-4 font-display text-3xl text-foreground">
                 {tier.price}
                 {tier.period && (
-                  <span className="text-base font-sans text-[var(--recruit-muted)]">
+                  <span className="text-base font-sans text-muted-foreground">
                     {tier.period}
                   </span>
                 )}
               </p>
               <ul className="mt-6 flex-1 space-y-3">
                 {tier.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-[var(--recruit-muted)]">
-                    <Check className="mt-0.5 size-4 shrink-0 text-[#5085fb]" />
+                  <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
                     {f}
                   </li>
                 ))}

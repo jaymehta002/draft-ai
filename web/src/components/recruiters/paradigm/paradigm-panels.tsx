@@ -14,7 +14,7 @@ export function OldWayPanel() {
           ats_export_v7.xlsx
         </span>
       </div>
-      <h3 className="font-serif text-xl text-foreground">{PARADIGM.oldWay.title}</h3>
+      <h3 className="font-display text-xl text-foreground">{PARADIGM.oldWay.title}</h3>
       <p className="mt-2 text-sm text-muted-foreground">{PARADIGM.oldWay.body}</p>
       <ul className="mt-5 flex-1 space-y-2">
         {PARADIGM.oldWay.items.map((item) => (
@@ -40,7 +40,7 @@ export function NewWayPanel() {
           draft-ai · signal layer
         </span>
       </div>
-      <h3 className="font-serif text-xl text-foreground">{PARADIGM.newWay.title}</h3>
+      <h3 className="font-display text-xl text-foreground">{PARADIGM.newWay.title}</h3>
       <p className="mt-2 text-sm text-muted-foreground">{PARADIGM.newWay.body}</p>
       <ul className="mt-5 flex-1 space-y-2">
         {PARADIGM.newWay.items.map((item) => (

@@ -1,8 +1,6 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowRight, TrendingUp } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { TrendingUp } from "lucide-react"
 import { SiteHeader } from "@/components/marketing/site-header"
 import { SiteFooter } from "@/components/marketing/site-footer"
 import { STORIES, getStory } from "@/lib/seo-content"
@@ -69,17 +67,6 @@ export default async function StoryPage({
           ))}
         </div>
 
-        <div className="mt-14 rounded-2xl border border-primary/30 bg-primary/5 p-8 text-center">
-          <h2 className="font-serif text-2xl tracking-tight text-foreground">
-            Write outreach that gets replies
-          </h2>
-          <Button size="lg" className="mt-5" asChild>
-            <Link href="/try">
-              Try Draft AI free
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
-        </div>
       </main>
       <SiteFooter />
     </div>

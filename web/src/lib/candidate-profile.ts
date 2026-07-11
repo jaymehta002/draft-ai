@@ -59,6 +59,8 @@ export type CandidateProfileData = {
   outreachTone: string
   draftLength: string
   outreachLanguage: string
+  /** Optimistic-concurrency token — the version last read from the server. */
+  version: number
 }
 
 export const MONTHS = [
@@ -150,6 +152,7 @@ export function emptyProfile(): CandidateProfileData {
     outreachTone: "professional",
     draftLength: "medium",
     outreachLanguage: "en",
+    version: 0,
   }
 }
 
@@ -305,6 +308,7 @@ export function toCandidateProfileData(profile: {
   outreachTone: string | null
   draftLength: string | null
   outreachLanguage: string | null
+  version: number
 }): CandidateProfileData {
   const structured = migrateLegacyToStructured(profile)
   const base: CandidateProfileData = {
@@ -340,6 +344,7 @@ export function toCandidateProfileData(profile: {
     outreachTone: profile.outreachTone ?? "professional",
     draftLength: profile.draftLength ?? "medium",
     outreachLanguage: profile.outreachLanguage ?? "en",
+    version: profile.version,
   }
   return syncLegacyFields(base)
 }
@@ -383,6 +388,7 @@ export function parseCandidateFormData(formData: FormData): CandidateProfileData
     outreachTone: (formData.get("outreachTone") as string) || "professional",
     draftLength: (formData.get("draftLength") as string) || "medium",
     outreachLanguage: (formData.get("outreachLanguage") as string) || "en",
+    version: Number(formData.get("version")) || 0,
   }
 
   return syncLegacyFields(profile)
@@ -517,6 +523,20 @@ export function isOnboardingComplete(data: CandidateProfileData): boolean {
   return getOnboardingValidationIssues(data).length === 0
 }
 
+/**
+ * Single source of truth for whether a profile satisfies onboarding
+ * requirements, independent of which save path triggered the check. Callers
+ * that persist `CandidateProfile.onboardingComplete` should derive it from
+ * this rather than trusting a caller-supplied flag.
+ */
+export function computeOnboardingStatus(data: CandidateProfileData): boolean {
+  return isOnboardingComplete(data)
+}
+
+/** Thrown by the optimistic-concurrency write path on a version conflict. */
+export const PROFILE_CONFLICT_ERROR =
+  "Your profile changed elsewhere while you were editing. Refresh and try again."
+
 export function profileToFormData(profile: CandidateProfileData): FormData {
   const synced = syncLegacyFields(profile)
   const formData = new FormData()
@@ -525,7 +545,7 @@ export function profileToFormData(profile: CandidateProfileData): FormData {
     "currentTitle", "yearsExperience", "summary", "workExperience", "education",
     "skills", "certifications", "resumeFileName", "resumeMimeType", "resumeStorageKey", "resumeFileUrl", "resumeFileSize", "resumeFileData", "resumeContent",
     "desiredRoles", "salaryExpectation", "workPreference", "availability",
-    "outreachTone", "draftLength", "outreachLanguage",
+    "outreachTone", "draftLength", "outreachLanguage", "version",
   ]
   for (const key of scalarKeys) {
     formData.append(key, String(synced[key]))

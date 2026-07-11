@@ -5,7 +5,7 @@ import { Save, User, Briefcase, FolderKanban, Award, Link2, Target, FileText, Lo
 import { useUploadThing } from "@/lib/uploadthing-client"
 import { extractTextFromFile } from "@/lib/pdf-extract"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
-import { syncLegacyFields, profileToFormData } from "@/lib/candidate-profile"
+import { syncLegacyFields, profileToFormData, PROFILE_CONFLICT_ERROR } from "@/lib/candidate-profile"
 import { saveCandidateProfile } from "@/app/actions"
 import { WorkExperienceEditor } from "@/components/profile/work-experience-editor"
 import { ProjectsEditor } from "@/components/profile/projects-editor"
@@ -262,15 +262,20 @@ function ResumeUploader({
       }
 
       update(newPatch)
-      
+
       const updatedProfile = syncLegacyFields({ ...profile, ...newPatch })
       const formData = profileToFormData(updatedProfile)
-      await saveCandidateProfile(formData)
+      const result = await saveCandidateProfile(formData)
+      update({ version: result.version })
 
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to upload resume")
+      if (err instanceof Error && err.message === PROFILE_CONFLICT_ERROR) {
+        setError("Your profile changed elsewhere. Refresh the page and try uploading again.")
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to upload resume")
+      }
     }
   }
 

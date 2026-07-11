@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { Check, ArrowRight } from "lucide-react"
+import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SiteHeader } from "@/components/marketing/site-header"
 import { SiteFooter } from "@/components/marketing/site-footer"
@@ -71,12 +71,6 @@ export default async function OutreachPersonaPage({
         <p className="mt-4 text-lg text-muted-foreground">{persona.subtitle}</p>
 
         <div className="mt-8 flex flex-wrap gap-3">
-          <Button size="lg" asChild>
-            <Link href={`/try?persona=${persona.slug}`}>
-              Try a draft free
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
           <Button size="lg" variant="outline" asChild>
             <Link href="/pricing">See plans</Link>
           </Button>
@@ -108,17 +102,6 @@ export default async function OutreachPersonaPage({
           </dl>
         </section>
 
-        <div className="mt-16 rounded-2xl border border-primary/30 bg-primary/5 p-8 text-center">
-          <h2 className="font-serif text-2xl tracking-tight text-foreground">
-            Ready to get more replies?
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Generate your first personalized message in seconds — no credit card required.
-          </p>
-          <Button size="lg" className="mt-5" asChild>
-            <Link href="/try">Try Draft AI free</Link>
-          </Button>
-        </div>
       </main>
       <SiteFooter />
     </div>

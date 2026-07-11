@@ -3,7 +3,8 @@
 import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { GoogleSignInExplainer } from "@/components/google-sign-in-explainer"
-import { MagneticButton, ScrollReveal, FloatingCard } from "@/components/motion"
+import { ScrollReveal, FloatingCard } from "@/components/motion"
+import { AmbientGrid } from "@/components/marketing/ambient-grid"
 import { MessageComparison } from "./message-comparison"
 
 const CALLBACK_URL = "/onboarding"
@@ -34,10 +35,7 @@ function SignInButton({
 export function HeroSection() {
   return (
     <section className="relative overflow-hidden bg-white">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-40 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 rounded-full bg-primary/[0.06] blur-[120px]" />
-        <div className="absolute top-96 -right-32 h-[24rem] w-[24rem] rounded-full bg-slate-100 blur-[100px]" />
-      </div>
+      <AmbientGrid />
 
       <div className="mx-auto max-w-6xl px-4 pt-20 pb-16 sm:pt-28 lg:px-8">
         <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
@@ -46,18 +44,15 @@ export function HeroSection() {
               <span className="size-1.5 animate-pulse rounded-full bg-primary" />
               For job seekers who reach out first
             </span>
-            <h1 className="mt-5 font-serif text-4xl tracking-tight leading-[1.08] sm:text-5xl lg:text-6xl">
-              Outreach that sounds like you wrote it on purpose.
+            <h1 className="mt-5 font-display text-4xl tracking-tight leading-[1.08] sm:text-5xl lg:text-6xl">
+              Outreach that reads like you meant it.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
               Draft AI turns any X or LinkedIn post into a message built for that person and your
               background — so cold reach-outs feel deliberate, and actually get replies.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <MagneticButton href="/try" size="lg">
-                Try a draft
-              </MagneticButton>
-              <SignInButton size="lg" variant="outline">
+              <SignInButton size="lg">
                 Get started free
               </SignInButton>
             </div>

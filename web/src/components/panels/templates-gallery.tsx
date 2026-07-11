@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import { Copy, Check, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -80,13 +79,6 @@ export function TemplatesGallery({ templates }: { templates: Template[] }) {
                   <Copy className="size-3.5 mr-1" />
                 )}
                 Copy
-              </Button>
-              <Button size="sm" className="flex-1" asChild>
-                <Link
-                  href={`/try?tone=${encodeURIComponent(t.toneUsed || "professional")}&hint=${encodeURIComponent(t.excerpt.slice(0, 100))}`}
-                >
-                  Adapt
-                </Link>
               </Button>
             </div>
           </CardContent>

@@ -11,7 +11,6 @@ export type StepId =
   | "projects"
   | "certificates"
   | "tone"
-  | "preview-draft"
   | "whats-next"
   | "review"
   | { type: "question"; field: keyof CandidateProfileData }
@@ -45,7 +44,6 @@ export function buildStepQueue(
   steps.push("certificates")
   steps.push("review")
   steps.push("tone")
-  steps.push("preview-draft")
   steps.push("whats-next")
 
   return steps
@@ -80,7 +78,7 @@ export function buildQuickStepQueue(
     steps.push("skills")
   }
 
-  steps.push("tone", "preview-draft", "whats-next")
+  steps.push("tone", "whats-next")
   return steps
 }
 
@@ -95,7 +93,6 @@ const CANONICAL_STEP_ORDER: string[] = [
   "certificates",
   "review",
   "tone",
-  "preview-draft",
   "whats-next",
 ]
 
@@ -149,7 +146,6 @@ export function getStepLabel(step: StepId, stepIndex: number, totalSteps: number
     certificates: "Experience",
     review: "Review",
     tone: "Preferences",
-    "preview-draft": "Preview",
     "whats-next": "Get started",
   }
   return `${counter} · ${groups[step] || "Setup"}`
@@ -168,7 +164,6 @@ export function canContinueStep(step: StepId, profile: CandidateProfileData, ski
   }
   if (step === "projects" || step === "certificates") return true
   if (step === "tone") return true
-  if (step === "preview-draft") return true
   if (step === "whats-next") return true
   if (step === "review") return true
 

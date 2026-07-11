@@ -36,10 +36,22 @@ export const authOptions: NextAuthOptions = {
       return session
     },
     async redirect({ url, baseUrl }) {
-      // Preserve explicit relative callback URLs (e.g. /extension/connect?state=...)
-      if (url.startsWith("/")) return `${baseUrl}${url}`
-      // Preserve same-origin absolute URLs
-      if (new URL(url).origin === baseUrl) return url
+      // Relative paths are safe, except protocol-relative ("//evil.com") which
+      // browsers resolve as an absolute URL to a different origin.
+      if (url.startsWith("/") && !url.startsWith("//")) {
+        return `${baseUrl}${url}`
+      }
+      // Compare parsed origins (not raw strings) so a trailing slash on
+      // baseUrl, or an unparseable url, can't produce a false match or throw.
+      try {
+        const target = new URL(url)
+        const base = new URL(baseUrl)
+        if (target.origin === base.origin) {
+          return url
+        }
+      } catch {
+        // Not a valid absolute URL — fall through to the safe default.
+      }
       // Default landing spot after sign-in is the dashboard
       return `${baseUrl}/dashboard`
     },

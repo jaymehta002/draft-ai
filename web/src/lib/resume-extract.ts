@@ -196,7 +196,7 @@ function buildWorkExperiencesFromExtraction(
 
 type ScalarProfileField = Exclude<
   keyof CandidateProfileData,
-  "workExperiences" | "projects" | "certificates"
+  "workExperiences" | "projects" | "certificates" | "version"
 >
 
 export function mapExtractionToProfile(

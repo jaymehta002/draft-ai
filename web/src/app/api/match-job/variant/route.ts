@@ -7,8 +7,13 @@ import { normalizeEmailGreeting } from "@/lib/email-greeting"
 import { incrementDraftStats } from "@/lib/user-stats"
 import { limitReachedResponse, releaseUsage, reserveUsage } from "@/lib/entitlements"
 import { recordActivity } from "@/lib/engagement"
-import { buildDraftSystemPrompt } from "@/lib/draft-prompt"
+import { buildDraftSystemPrompt, flagSuspiciousDraftOutput } from "@/lib/draft-prompt"
 import { getWebErrorMessage } from "@/lib/error-messages"
+import {
+  formatCertificatesForAI,
+  formatProjectsForAI,
+  migrateLegacyToStructured,
+} from "@/lib/candidate-profile"
 
 const VALID_TONES = ["professional", "warm", "direct", "formal"] as const
 
@@ -76,8 +81,13 @@ export async function POST(req: Request) {
     if (!draftReserve.reserved) return limitReachedResponse(draftReserve.check)
     reservedUserId = apiKey.userId
 
+    const structured = migrateLegacyToStructured(profile)
     const systemPrompt = buildDraftSystemPrompt(
-      profile,
+      {
+        ...profile,
+        projects: formatProjectsForAI(structured.projects),
+        certificates: formatCertificatesForAI(structured.certificates),
+      },
       {
         text: existingDraft.postText,
         name: existingDraft.recipientName,
@@ -150,6 +160,15 @@ export async function POST(req: Request) {
         : result.outreach_payload.message_content
 
     result.outreach_payload.message_content = message
+
+    const suspiciousFlags = flagSuspiciousDraftOutput(message)
+    if (suspiciousFlags.length > 0) {
+      console.warn("Suspicious draft output detected", {
+        userId: apiKey.userId,
+        postId,
+        flags: suspiciousFlags,
+      })
+    }
 
     const variant = await prisma.$transaction(async (tx) => {
       const fresh = await tx.postDraft.findUnique({

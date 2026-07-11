@@ -156,6 +156,37 @@ export const BENTO = {
   },
 }
 
+export type RecruiterTestimonial = {
+  quote: string
+  name: string
+  role: string
+  metric: string
+}
+
+export const TESTIMONIALS: RecruiterTestimonial[] = [
+  {
+    quote:
+      "We went from a 6-week req to five interview-ready candidates in four days. The ranking held up — every one of them was a real conversation.",
+    name: "Renee Ostrander",
+    role: "Head of Talent, Series B fintech",
+    metric: "4 days to shortlist",
+  },
+  {
+    quote:
+      "Our recruiters stopped exporting spreadsheets and started running searches. That's the whole pitch, and it's true.",
+    name: "Tomas Vidal",
+    role: "VP Engineering, growth-stage infra co.",
+    metric: "3.1× faster fills",
+  },
+  {
+    quote:
+      "The match reasoning is the part that sold our team — not just a score, an explanation we could defend to the hiring manager.",
+    name: "Aisha Farouk",
+    role: "Technical Recruiter, remote-first startup",
+    metric: "94% first-pass confidence",
+  },
+]
+
 export const PRICING_TIERS: PricingTier[] = [
   {
     name: "Starter",

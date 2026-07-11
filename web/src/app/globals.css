@@ -134,6 +134,7 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
+  --font-display: var(--font-display);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -268,6 +269,56 @@
 
 .animate-marquee:hover {
   animation-play-state: paused;
+}
+
+/* Feature spotlight bento — asymmetric grid, not a uniform 3-col template */
+.feature-spotlight-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .feature-spotlight-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .feature-spotlight-grid > .feature-area-spot {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 1024px) {
+  .feature-spotlight-grid {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, minmax(160px, auto));
+    grid-template-areas:
+      "spot spot mail"
+      "spot spot data"
+      "fast tone analytics";
+  }
+  .feature-spotlight-grid > .feature-area-spot {
+    grid-column: auto;
+    grid-area: spot;
+  }
+  .feature-area-mail { grid-area: mail; }
+  .feature-area-data { grid-area: data; }
+  .feature-area-fast { grid-area: fast; }
+  .feature-area-tone { grid-area: tone; }
+  .feature-area-analytics { grid-area: analytics; }
+}
+
+/* Ambient grid drift */
+@keyframes grid-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 28px 28px;
+  }
+}
+
+.animate-grid-drift {
+  animation: grid-drift 32s linear infinite;
 }
 
 /* Shimmer skeleton */

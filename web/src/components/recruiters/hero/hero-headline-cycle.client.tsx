@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { EASE_OUT } from "@/lib/motion-tokens"
 
 export function HeroHeadlineCycle({ headlines }: { headlines: string[] }) {
   const reducedMotion = useReducedMotion()
@@ -28,7 +29,7 @@ export function HeroHeadlineCycle({ headlines }: { headlines: string[] }) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.5, ease: EASE_OUT }}
         className="inline-block"
       >
         {current}

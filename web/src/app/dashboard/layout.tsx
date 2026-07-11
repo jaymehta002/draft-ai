@@ -10,6 +10,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
+// Guards against static optimization/caching regardless of future changes to
+// this layout — it already renders dynamically today because getServerSession
+// reads cookies, but that's implicit and would silently break if the auth
+// check were ever refactored to not touch a dynamic API.
+export const dynamic = "force-dynamic"
+
 export default async function DashboardLayout({
   children,
 }: {

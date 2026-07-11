@@ -6,7 +6,7 @@ import type { DraftProfileContext } from "@/lib/draft-prompt"
 export type FollowUpType = "bump" | "close"
 
 function buildFollowUpPrompt(
-  profile: DraftProfileContext,
+  profile: Pick<DraftProfileContext, "fullName" | "currentTitle">,
   originalMessage: string,
   recipientName: string | null,
   followUpType: FollowUpType,

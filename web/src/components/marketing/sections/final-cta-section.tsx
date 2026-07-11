@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { GoogleSignInExplainer } from "@/components/google-sign-in-explainer"
 import { ScrollReveal } from "@/components/motion"
+import { AmbientGrid } from "@/components/marketing/ambient-grid"
 
 const CALLBACK_URL = "/onboarding"
 
@@ -19,12 +20,9 @@ export function FinalCtaSection() {
             Works on posts you choose — not a bot.
           </p>
         </div>
-        <div className="relative overflow-hidden rounded-3xl border border-slate-100 bg-white px-6 py-16 text-center shadow-[0_8px_30px_rgba(20,71,230,0.06)] sm:px-12">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/10 blur-[100px]"
-          />
-          <h2 className="mx-auto max-w-2xl font-serif text-3xl leading-tight tracking-tight text-foreground sm:text-4xl">
+        <div className="relative overflow-hidden rounded-3xl border border-slate-100 bg-white px-6 py-16 text-center shadow-[0_8px_30px_rgba(15,23,42,0.06)] sm:px-12">
+          <AmbientGrid fade="top" />
+          <h2 className="mx-auto max-w-2xl font-display text-3xl leading-tight tracking-tight text-foreground sm:text-4xl">
             Your next reply is one draft away.
           </h2>
           <p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-muted-foreground">

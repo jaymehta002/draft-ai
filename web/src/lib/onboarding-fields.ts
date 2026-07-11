@@ -140,4 +140,5 @@ export const FIELD_LABELS: Record<keyof CandidateProfileData, string> = {
   outreachTone: "Outreach tone",
   draftLength: "Draft length",
   outreachLanguage: "Language",
+  version: "Version",
 }

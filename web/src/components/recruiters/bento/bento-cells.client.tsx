@@ -35,7 +35,7 @@ function CellHeader({
       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-primary/70">
         {eyebrow}
       </p>
-      <h3 className="mt-1.5 font-serif text-lg leading-snug text-foreground sm:text-xl">
+      <h3 className="mt-1.5 font-display text-lg leading-snug text-foreground sm:text-xl">
         {title}
       </h3>
       <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{body}</p>
@@ -155,7 +155,7 @@ export function MatchingCell() {
               </div>
 
               <div className="flex w-16 shrink-0 flex-col items-end gap-1">
-                <span className="font-serif text-base leading-none text-foreground">
+                <span className="font-display text-base leading-none text-foreground">
                   {c.score}
                   <span className="text-[10px] text-muted-foreground">%</span>
                 </span>
@@ -345,7 +345,7 @@ function StageColumn({
           transition={{ duration: 0.7, delay: index * 0.1, ease: EASE_OUT }}
         />
       </div>
-      <span className="font-serif text-lg leading-none text-foreground">{value}</span>
+      <span className="font-display text-lg leading-none text-foreground">{value}</span>
       <span className="text-[10px] text-muted-foreground">{stage}</span>
     </div>
   )

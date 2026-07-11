@@ -18,6 +18,12 @@ export function FadeIn({
   className?: string
   delay?: number
 }) {
+  const reduceMotion = useReducedMotion()
+
+  if (reduceMotion) {
+    return <div className={className}>{children}</div>
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -41,6 +47,11 @@ export function ScrollReveal({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-60px" })
+  const reduceMotion = useReducedMotion()
+
+  if (reduceMotion) {
+    return <div className={className}>{children}</div>
+  }
 
   return (
     <motion.div
@@ -62,6 +73,12 @@ export function StaggerContainer({
   children: React.ReactNode
   className?: string
 }) {
+  const reduceMotion = useReducedMotion()
+
+  if (reduceMotion) {
+    return <div className={className}>{children}</div>
+  }
+
   return (
     <motion.div
       initial="hidden"
@@ -85,6 +102,12 @@ export function StaggerItem({
   children: React.ReactNode
   className?: string
 }) {
+  const reduceMotion = useReducedMotion()
+
+  if (reduceMotion) {
+    return <div className={className}>{children}</div>
+  }
+
   return (
     <motion.div
       variants={{

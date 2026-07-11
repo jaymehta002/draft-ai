@@ -7,13 +7,14 @@ import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { createUserApiKey } from "@/lib/api-key"
 import {
+  computeOnboardingStatus,
   formatOnboardingValidationError,
   getOnboardingValidationIssues,
-  isOnboardingComplete,
   parseCandidateFormData,
   syncLegacyFields,
   toCandidateProfileData,
 } from "@/lib/candidate-profile"
+import { writeCandidateProfileWithVersion } from "@/lib/candidate-profile-write"
 import type { OnboardingProgress } from "@/lib/onboarding-progress"
 import { parseOnboardingProgress } from "@/lib/onboarding-progress"
 import {
@@ -48,17 +49,26 @@ export async function saveCandidateProfile(
   const yearsExperience = data.yearsExperience ? parseInt(data.yearsExperience, 10) : null
   const resumeFileSize = data.resumeFileSize ? parseInt(data.resumeFileSize, 10) : null
 
-  const onboardingComplete = completeOnboarding ? isOnboardingComplete(data) : false
+  const recomputedComplete = computeOnboardingStatus(data)
 
-  if (completeOnboarding && !onboardingComplete) {
+  if (completeOnboarding && !recomputedComplete) {
     const issues = getOnboardingValidationIssues(data)
     throw new Error(formatOnboardingValidationError(issues))
   }
 
   const existingProfile = await prisma.candidateProfile.findUnique({
     where: { userId: user.id },
-    select: { resumeStorageKey: true },
+    select: { resumeStorageKey: true, onboardingComplete: true, version: true },
   })
+
+  // Partial saves (autosave/step-navigation) can only demote an
+  // already-complete profile back to incomplete — e.g. editing a required
+  // field into an invalid state after finishing onboarding. They never
+  // auto-promote to complete, since required fields can validate mid-wizard
+  // before the user reaches the explicit completion step.
+  const onboardingComplete = completeOnboarding
+    ? recomputedComplete
+    : Boolean(existingProfile?.onboardingComplete) && recomputedComplete
 
   const payload = {
     fullName: data.fullName,
@@ -91,7 +101,7 @@ export async function saveCandidateProfile(
     outreachTone: data.outreachTone || "professional",
     draftLength: data.draftLength || "medium",
     outreachLanguage: data.outreachLanguage || "en",
-    onboardingComplete: completeOnboarding ? onboardingComplete : undefined,
+    onboardingComplete,
     onboardingProgress:
       completeOnboarding
         ? Prisma.DbNull
@@ -100,14 +110,9 @@ export async function saveCandidateProfile(
           : undefined,
   }
 
-  await prisma.candidateProfile.upsert({
-    where: { userId: user.id },
-    update: payload,
-    create: {
-      userId: user.id,
-      ...payload,
-      onboardingComplete: completeOnboarding ? onboardingComplete : false,
-    },
+  const result = await writeCandidateProfileWithVersion(user.id, payload, {
+    profileExists: existingProfile !== null,
+    expectedVersion: data.version ?? 0,
   })
 
   const previousStorageKey = existingProfile?.resumeStorageKey?.trim() || null
@@ -120,6 +125,8 @@ export async function saveCandidateProfile(
       console.error("Failed to delete replaced resume from UploadThing:", error)
     }
   }
+
+  return result
 }
 
 export async function saveOutreachPreferences(prefs: {

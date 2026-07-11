@@ -11,6 +11,19 @@ const SESSION_COOKIES = [
   "__Secure-next-auth.session-token",
 ]
 
+// These routes render per-request based on the session cookie, but Next's
+// own default caching headers for dynamic responses ("Cache-Control:
+// no-cache, must-revalidate", no "Vary: Cookie") leave room for a
+// shared/intermediate cache to treat different sessions as cache-equivalent.
+// Setting them here in the proxy survives into the final response, unlike
+// setting them via next.config.js headers(), which Next's later rendering
+// pipeline overwrites for these routes.
+function withNoStore(response: NextResponse): NextResponse {
+  response.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+  response.headers.set("Vary", "Cookie")
+  return response
+}
+
 export function proxy(request: NextRequest) {
   const hasSession = SESSION_COOKIES.some((name) => request.cookies.has(name))
 
@@ -20,10 +33,10 @@ export function proxy(request: NextRequest) {
       "callbackUrl",
       request.nextUrl.pathname + request.nextUrl.search
     )
-    return NextResponse.redirect(signInUrl)
+    return withNoStore(NextResponse.redirect(signInUrl))
   }
 
-  return NextResponse.next()
+  return withNoStore(NextResponse.next())
 }
 
 export const config = {

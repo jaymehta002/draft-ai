@@ -20,8 +20,8 @@ import { ProfileCard } from "@/components/profile-card"
 import { ProfileEditor } from "@/components/profile/profile-editor"
 import { PreferencesSection } from "@/components/dashboard/preferences-section"
 import { BillingTab } from "@/components/billing/billing-tab"
-import { saveCandidateProfile } from "@/app/actions"
-import { profileToFormData, syncLegacyFields } from "@/lib/candidate-profile"
+import { getDashboardData, saveCandidateProfile } from "@/app/actions"
+import { profileToFormData, syncLegacyFields, PROFILE_CONFLICT_ERROR } from "@/lib/candidate-profile"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
 import { CreditCard, ShieldCheck, Sliders, User } from "lucide-react"
 
@@ -85,7 +85,15 @@ export function ProfilePageClient({ initialProfile }: { initialProfile: Candidat
       await saveCandidateProfile(profileToFormData(syncLegacyFields(profileData)), true)
       router.refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save profile")
+      if (e instanceof Error && e.message === PROFILE_CONFLICT_ERROR) {
+        const fresh = await getDashboardData().catch(() => null)
+        if (fresh?.candidateProfile) {
+          setProfileData((prev) => ({ ...prev, version: fresh.candidateProfile!.version }))
+        }
+        setError("Your profile was updated elsewhere while you were editing. We've refreshed it — your changes here are still intact, just try again.")
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to save profile")
+      }
     } finally {
       setSaving(false)
     }

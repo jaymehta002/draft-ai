@@ -1,3 +1,5 @@
+import { ScrollReveal } from "@/components/motion"
+
 export function SectionHeader({
   label,
   headline,
@@ -12,7 +14,7 @@ export function SectionHeader({
   align?: "center" | "left"
 }) {
   return (
-    <div
+    <ScrollReveal
       className={
         align === "center"
           ? "mx-auto max-w-2xl text-center"
@@ -26,7 +28,7 @@ export function SectionHeader({
       )}
       <h2
         id={id}
-        className="mt-3 font-serif text-3xl tracking-tight text-foreground sm:text-4xl"
+        className="mt-3 font-display text-3xl tracking-tight text-foreground sm:text-4xl"
       >
         {headline}
       </h2>
@@ -35,6 +37,6 @@ export function SectionHeader({
           {subheadline}
         </p>
       )}
-    </div>
+    </ScrollReveal>
   )
 }

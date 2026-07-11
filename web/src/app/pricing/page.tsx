@@ -1,6 +1,4 @@
-import Link from "next/link"
 import { Check } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { SiteHeader } from "@/components/marketing/site-header"
 import { SiteFooter } from "@/components/marketing/site-footer"
@@ -82,16 +80,12 @@ export default function PricingPage() {
                     </li>
                   ))}
                 </ul>
-                {plan.tier ? (
+                {plan.tier && (
                   <PricingCta
                     tier={plan.tier}
                     label={`Upgrade to ${plan.name}`}
                     variant={plan.highlighted ? "default" : "outline"}
                   />
-                ) : (
-                  <Button className="w-full" variant="outline" asChild>
-                    <Link href="/try">Try a draft</Link>
-                  </Button>
                 )}
               </CardContent>
             </Card>

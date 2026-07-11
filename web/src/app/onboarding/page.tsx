@@ -7,7 +7,13 @@ import { AnimatePresence } from "framer-motion"
 import { ChevronLeft, ChevronRight, Check } from "lucide-react"
 import { getOnboardingData, saveCandidateProfile } from "../actions"
 import type { CandidateProfileData } from "@/lib/candidate-profile"
-import { emptyProfile, isOnboardingComplete, syncLegacyFields, profileToFormData } from "@/lib/candidate-profile"
+import {
+  emptyProfile,
+  isOnboardingComplete,
+  syncLegacyFields,
+  profileToFormData,
+  PROFILE_CONFLICT_ERROR,
+} from "@/lib/candidate-profile"
 import { mapExtractionToProfile } from "@/lib/resume-extract"
 import { extractTextFromFile } from "@/lib/pdf-extract"
 import {
@@ -29,7 +35,6 @@ import {
   type OnboardingProgress,
 } from "@/lib/onboarding-progress"
 import { ToneStep } from "@/components/onboarding/tone-step"
-import { PreviewDraftStep } from "@/components/onboarding/preview-draft-step"
 import { WhatsNextStep } from "@/components/onboarding/whats-next-step"
 import type { ExtensionSetupStatus } from "@/hooks/use-extension-setup-status"
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell"
@@ -126,7 +131,8 @@ function OnboardingContent() {
       progress: OnboardingProgress,
       profileData: CandidateProfileData = profile
     ) => {
-      await saveCandidateProfile(profileToFormData(profileData), false, progress)
+      const result = await saveCandidateProfile(profileToFormData(profileData), false, progress)
+      setProfile((prev) => ({ ...prev, version: result.version }))
     },
     [profile]
   )
@@ -138,7 +144,8 @@ function OnboardingContent() {
       profileData: CandidateProfileData = profile
     ) => {
       if (nextStep === "whats-next" && isOnboardingComplete(profileData)) {
-        await saveCandidateProfile(profileToFormData(profileData), true, progress)
+        const result = await saveCandidateProfile(profileToFormData(profileData), true, progress)
+        setProfile((prev) => ({ ...prev, version: result.version }))
         return
       }
       await persistProgress(progress, profileData)
@@ -161,9 +168,13 @@ function OnboardingContent() {
         aiFilledFields,
         revealDismissed,
       })
-    ).catch(() => {
-      whatsNextFinalizedRef.current = false
-    })
+    )
+      .then((result) => {
+        setProfile((prev) => ({ ...prev, version: result.version }))
+      })
+      .catch(() => {
+        whatsNextFinalizedRef.current = false
+      })
   }, [currentStep, profile, onboardingMode, aiFilledFields, revealDismissed])
 
   useEffect(() => {
@@ -452,29 +463,6 @@ function OnboardingContent() {
     }
   }
 
-  const handlePreviewSkip = async () => {
-    const nextIndex = stepIndex + 1
-    const nextStep = stepQueue[nextIndex]
-    if (!nextStep) return
-
-    setStepIndex(nextIndex)
-    try {
-      await persistStepEntry(
-        nextStep,
-        toOnboardingProgress({
-          mode: onboardingMode,
-          flowPhase: "steps",
-          currentStep: nextStep,
-          aiFilledFields,
-          revealDismissed,
-        })
-      )
-    } catch (err) {
-      setStepIndex(stepIndex)
-      setError(err instanceof Error ? err.message : "Failed to save progress")
-    }
-  }
-
   const handleComplete = async () => {
     setSaving(true)
     setError(null)
@@ -482,7 +470,15 @@ function OnboardingContent() {
       await saveCandidateProfile(buildFormData(), true)
       router.push("/dashboard/extension")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to complete onboarding")
+      if (err instanceof Error && err.message === PROFILE_CONFLICT_ERROR) {
+        const fresh = await getOnboardingData().catch(() => null)
+        if (fresh?.profile) {
+          setProfile((prev) => ({ ...prev, version: fresh.profile!.version }))
+        }
+        setError("Your profile was updated elsewhere while you were editing. We've refreshed it — your changes here are still intact, just try again.")
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to complete onboarding")
+      }
     } finally {
       setSaving(false)
     }
@@ -638,13 +634,6 @@ function OnboardingContent() {
             key="tone"
             value={profile.outreachTone}
             onChange={(v) => updateField("outreachTone", v)}
-          />
-        ) : currentStep === "preview-draft" ? (
-          <PreviewDraftStep
-            key="preview-draft"
-            onSkip={() => {
-              void handlePreviewSkip()
-            }}
           />
         ) : currentStep === "whats-next" ? (
           <WhatsNextStep key="whats-next" onStatusChange={setExtensionSetup} />

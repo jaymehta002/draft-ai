@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Inter, Merriweather, JetBrains_Mono } from "next/font/google"
+import { Inter, Merriweather, Space_Grotesk, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import { Providers } from "@/components/Providers"
 import { siteConfig, siteUrl } from "@/lib/site"
@@ -11,6 +11,10 @@ const fontSans = Inter({
 const fontSerif = Merriweather({
   subsets: ["latin"],
   variable: "--font-serif",
+})
+const fontDisplay = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-display",
 })
 const fontMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -45,7 +49,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${fontSans.variable} ${fontSerif.variable} ${fontMono.variable} font-sans antialiased`}>
+      <body className={`${fontSans.variable} ${fontSerif.variable} ${fontDisplay.variable} ${fontMono.variable} font-sans antialiased`}>
         <Providers>{children}</Providers>
       </body>
     </html>

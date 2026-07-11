@@ -66,30 +66,6 @@
   border-color: var(--recruit-border-hover);
 }
 
-/* Hero orbs */
-.recruit-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  pointer-events: none;
-}
-
-.recruit-orb-1 {
-  width: 480px;
-  height: 480px;
-  background: radial-gradient(circle, rgba(20, 71, 230, 0.08) 0%, transparent 70%);
-  top: -120px;
-  right: -80px;
-}
-
-.recruit-orb-2 {
-  width: 360px;
-  height: 360px;
-  background: radial-gradient(circle, rgba(241, 245, 249, 0.8) 0%, transparent 70%);
-  bottom: 0;
-  left: -60px;
-}
-
 /* Bento grid layout */
 .bento-grid {
   display: grid;
