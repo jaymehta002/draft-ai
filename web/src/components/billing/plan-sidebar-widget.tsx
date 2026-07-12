@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { UsageMeter } from "@/components/billing/usage-meter"
 import { startCheckout } from "@/lib/billing-client"
 import { useBillingStatus } from "@/hooks/use-billing-status"
+import { useResetOnBackNavigation } from "@/hooks/use-reset-on-back-navigation"
+import { PLAN_LABEL } from "@/lib/plans"
 
-const TIER_LABEL: Record<string, string> = { FREE: "Free", PRO: "Pro", POWER: "Power" }
 const EASE = "cubic-bezier(0.16,1,0.3,1)"
 
 function pct(used: number, limit: number) {
@@ -19,11 +20,12 @@ function pct(used: number, limit: number) {
 export function PlanSidebarWidget({ collapsed }: { collapsed: boolean }) {
   const { status, loading } = useBillingStatus()
   const [acting, setActing] = useState(false)
+  useResetOnBackNavigation(() => setActing(false))
 
   if (loading || !status) return null
 
   const tier = status.effectiveTier
-  const isPaid = tier !== "FREE" && !status.isTrialing
+  const isPaid = tier !== "FREE"
 
   const draftLimit = status.limits.drafts + status.usage.bonusDrafts
   const emailLimit = status.limits.emails + status.usage.bonusEmails
@@ -38,7 +40,7 @@ export function PlanSidebarWidget({ collapsed }: { collapsed: boolean }) {
   const handleUpgrade = async () => {
     setActing(true)
     try {
-      await startCheckout({ tier: "PRO" })
+      await startCheckout({ tier: "BASIC" })
     } catch {
       setActing(false)
     }
@@ -68,7 +70,7 @@ export function PlanSidebarWidget({ collapsed }: { collapsed: boolean }) {
           <div className="relative rounded-md border border-sidebar-border bg-sidebar/95 px-3 py-2 shadow-lg backdrop-blur-sm">
             <div className="absolute left-0 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-l border-b border-sidebar-border bg-sidebar/95" />
             <div className="relative">
-              <p className="text-xs font-medium text-sidebar-foreground">{TIER_LABEL[tier]} plan</p>
+              <p className="text-xs font-medium text-sidebar-foreground">{PLAN_LABEL[tier]} plan</p>
               <p className="mt-0.5 text-[10px] text-sidebar-foreground/60">
                 {primaryLabel}: {primaryUsed}/{primaryLimit}
               </p>
@@ -86,13 +88,8 @@ export function PlanSidebarWidget({ collapsed }: { collapsed: boolean }) {
           Your plan
         </span>
         <div className="flex items-center gap-1">
-          {status.isTrialing && (
-            <Badge variant="success" className="h-4 px-1.5 py-0 text-[9px]">
-              Trial
-            </Badge>
-          )}
           <Badge variant={isPaid ? "default" : "secondary"} className="h-4 px-1.5 py-0 text-[9px]">
-            {TIER_LABEL[tier]}
+            {PLAN_LABEL[tier]}
           </Badge>
         </div>
       </div>

@@ -28,6 +28,9 @@ import { getPipelineColumnForOutreach, isFollowUpEligible } from "@/lib/pipeline
 import { canConnectExtension } from "@/lib/extension-connect"
 import { resolvePostUrl } from "@/lib/post-url"
 import { utapi } from "@/lib/uploadthing-server"
+import { getUserEntitlements } from "@/lib/entitlements"
+import { PLAN_LIMITS } from "@/lib/plans"
+import { clampTone, isToneAllowed, isValidTone } from "@/lib/tone-entitlements"
 
 async function getAuthenticatedUser() {
   const session = await getServerSession(authOptions)
@@ -98,7 +101,10 @@ export async function saveCandidateProfile(
     salaryExpectation: data.salaryExpectation,
     workPreference: data.workPreference,
     availability: data.availability,
-    outreachTone: data.outreachTone || "professional",
+    // Onboarding autosave clamps silently instead of rejecting — the wizard's
+    // tone-step UI already restricts options by plan, so this only guards
+    // against a stale/bypassed client, not a normal user action to block on.
+    outreachTone: clampTone((await getUserEntitlements(user.id)).effectiveTier, data.outreachTone || "professional"),
     draftLength: data.draftLength || "medium",
     outreachLanguage: data.outreachLanguage || "en",
     onboardingComplete,
@@ -135,6 +141,17 @@ export async function saveOutreachPreferences(prefs: {
   outreachLanguage: string
 }) {
   const user = await getAuthenticatedUser()
+
+  if (!isValidTone(prefs.outreachTone)) {
+    throw new Error("Invalid outreach tone")
+  }
+  const { effectiveTier } = await getUserEntitlements(user.id)
+  if (!isToneAllowed(effectiveTier, prefs.outreachTone)) {
+    const err = new Error("This tone requires a higher plan") as Error & { code?: string; feature?: string }
+    err.code = "feature_locked"
+    err.feature = "tone"
+    throw err
+  }
 
   await prisma.candidateProfile.upsert({
     where: { userId: user.id },
@@ -713,6 +730,13 @@ export async function getUserWinningTemplates() {
 export async function syncWinningTemplatesFromReplies() {
   const user = await getAuthenticatedUser()
 
+  const { effectiveTier } = await getUserEntitlements(user.id)
+  const cap = PLAN_LIMITS[effectiveTier].templates // null = unlimited, 0 = feature locked
+  if (cap === 0) return { synced: 0 }
+
+  let remaining = cap === null ? Infinity : cap - (await prisma.winningTemplate.count({ where: { userId: user.id, isPublished: true } }))
+  if (remaining <= 0) return { synced: 0 }
+
   const winners = await prisma.sentOutreach.findMany({
     where: {
       userId: user.id,
@@ -723,7 +747,9 @@ export async function syncWinningTemplatesFromReplies() {
     take: 20,
   })
 
+  let synced = 0
   for (const w of winners) {
+    if (remaining <= 0) break
     const excerpt = w.message.slice(0, 280).trim()
     if (!excerpt) continue
 
@@ -742,9 +768,11 @@ export async function syncWinningTemplatesFromReplies() {
         isPublished: true,
       },
     })
+    remaining--
+    synced++
   }
 
-  return { synced: winners.length }
+  return { synced }
 }
 
 export const getDashboardData = cache(async function getDashboardData() {

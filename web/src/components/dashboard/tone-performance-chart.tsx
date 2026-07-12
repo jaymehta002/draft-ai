@@ -1,14 +1,40 @@
 import type { UserReplyMetrics } from "@/lib/reply-metrics"
 import { recommendTone } from "@/lib/tone-recommendation"
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card"
-import { TrendingUp } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { TrendingUp, Lock } from "lucide-react"
+import Link from "next/link"
+import { UPGRADE_URL } from "@/lib/plans"
 
 type TonePerformanceChartProps = {
   byTone: UserReplyMetrics["byTone"]
   fallbackTone?: string
+  /** Tone insights are a Pro-only feature — render an upsell instead of real data when locked. */
+  locked?: boolean
 }
 
-export function TonePerformanceChart({ byTone, fallbackTone }: TonePerformanceChartProps) {
+export function TonePerformanceChart({ byTone, fallbackTone, locked }: TonePerformanceChartProps) {
+  if (locked) {
+    return (
+      <Card className="border-border shadow-sm">
+        <CardHeader className="pb-2">
+          <CardDescription className="text-[10px] font-semibold uppercase tracking-widest flex items-center gap-2">
+            <TrendingUp className="size-3" /> Tone performance
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
+          <Lock className="size-5 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">
+            See which tone gets the best reply rate for you. Pro feature.
+          </p>
+          <Button size="sm" variant="outline" asChild>
+            <Link href={UPGRADE_URL}>Upgrade to Pro</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
   const entries = Object.entries(byTone)
     .filter(([tone]) => tone !== "unknown")
     .sort((a, b) => b[1].rate - a[1].rate)

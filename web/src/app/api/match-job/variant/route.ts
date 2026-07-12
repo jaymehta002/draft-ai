@@ -5,7 +5,7 @@ import { parseDraftResult } from "@/lib/outreach"
 import { openai, OPENAI_MODEL } from "@/lib/openai"
 import { normalizeEmailGreeting } from "@/lib/email-greeting"
 import { incrementDraftStats } from "@/lib/user-stats"
-import { limitReachedResponse, releaseUsage, reserveUsage } from "@/lib/entitlements"
+import { checkEntitlement, limitReachedResponse, releaseUsage, reserveUsage } from "@/lib/entitlements"
 import { recordActivity } from "@/lib/engagement"
 import { buildDraftSystemPrompt, flagSuspiciousDraftOutput } from "@/lib/draft-prompt"
 import { getWebErrorMessage } from "@/lib/error-messages"
@@ -14,8 +14,7 @@ import {
   formatProjectsForAI,
   migrateLegacyToStructured,
 } from "@/lib/candidate-profile"
-
-const VALID_TONES = ["professional", "warm", "direct", "formal"] as const
+import { VALID_TONES, isToneAllowed } from "@/lib/tone-entitlements"
 
 export async function POST(req: Request) {
   let reservedUserId: string | null = null
@@ -48,6 +47,12 @@ export async function POST(req: Request) {
 
     if (!VALID_TONES.includes(alternateTone)) {
       return NextResponse.json({ error: "Invalid alternateTone" }, { status: 400 })
+    }
+
+    const variantCheck = await checkEntitlement(apiKey.userId, "tone_variant")
+    if (!variantCheck.allowed) return limitReachedResponse(variantCheck)
+    if (!isToneAllowed(variantCheck.tier, alternateTone)) {
+      return NextResponse.json({ error: "This tone isn't available on your plan" }, { status: 402 })
     }
 
     const existingDraft = await prisma.postDraft.findUnique({

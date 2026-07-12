@@ -1,9 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { Lock } from "lucide-react"
 import { saveOutreachPreferences } from "@/app/actions"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { useBillingStatus } from "@/hooks/use-billing-status"
 
 const TONE_OPTIONS = [
   { value: "professional", label: "Professional", description: "Polished and personable" },
@@ -27,6 +29,8 @@ export function PreferencesSection({
   draftLength: string
   outreachLanguage: string
 }) {
+  const { status } = useBillingStatus()
+  const allowedTones = status?.allowedTones ?? ["professional"]
   const [tone, setTone] = useState(outreachTone || "professional")
   const [length, setLength] = useState(draftLength || "medium")
   const [language] = useState(outreachLanguage || "en")
@@ -89,22 +93,35 @@ export function PreferencesSection({
         <div>
           <p className="text-sm font-medium text-foreground mb-3">Tone</p>
           <div className="grid gap-2 sm:grid-cols-2">
-            {TONE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => updateTone(option.value)}
-                className={cn(
-                  "rounded-lg border px-3 py-2.5 text-left transition-[border-color,background-color] duration-200",
-                  tone === option.value
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/40"
-                )}
-              >
-                <p className="text-sm font-medium text-foreground">{option.label}</p>
-                <p className="text-xs text-muted-foreground">{option.description}</p>
-              </button>
-            ))}
+            {TONE_OPTIONS.map((option) => {
+              const locked = !allowedTones.includes(option.value)
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={locked}
+                  onClick={() => updateTone(option.value)}
+                  className={cn(
+                    "rounded-lg border px-3 py-2.5 text-left transition-[border-color,background-color] duration-200",
+                    locked
+                      ? "cursor-not-allowed border-border bg-muted/30 opacity-60"
+                      : tone === option.value
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/40"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-foreground">{option.label}</p>
+                    {locked && (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Lock className="size-3" /> Upgrade
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{option.description}</p>
+                </button>
+              )
+            })}
           </div>
         </div>
 

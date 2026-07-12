@@ -85,7 +85,7 @@ export async function sendDraftFromWeb(draftId: string) {
   const profile = await prisma.candidateProfile.findUnique({ where: { userId: user.id } })
   if (!profile?.onboardingComplete) throw new Error("Complete your profile first")
 
-  const { checkEntitlement, incrementUsage, startProTrial } = await import("@/lib/entitlements")
+  const { checkEntitlement, incrementUsage } = await import("@/lib/entitlements")
   const emailCheck = await checkEntitlement(user.id, "email")
   if (!emailCheck.allowed) {
     const err = new Error("limit_reached") as Error & { code?: string; feature?: string }
@@ -197,7 +197,6 @@ export async function sendDraftFromWeb(draftId: string) {
   await recordActivity(user.id, "send")
 
   if (isFirstSend) {
-    await startProTrial(user.id)
     const { maybeRewardReferralOnFirstSend } = await import("@/lib/referral")
     await maybeRewardReferralOnFirstSend(user.id)
   }

@@ -1,6 +1,6 @@
 import type { PlasmoCSConfig } from "plasmo"
 import { AUTH_STORAGE_KEYS } from "~lib/config"
-import { getDraftForPost, setDraftForPost, type DraftPreview } from "~lib/draft"
+import { buildEmailPayload, getDraftForPost, setDraftForPost, type DraftPreview } from "~lib/draft"
 import { persistDraftEdits } from "~lib/draft-sync"
 import {
   dedupeInnermostPosts,
@@ -21,7 +21,7 @@ import {
   type SentPostsMap,
 } from "~lib/sent-posts"
 import { getFeedPlatformFromHostname } from "~lib/platform"
-import { extractEmailFromText, inferRecipientNameFromEmail } from "~lib/email"
+import { extractEmailFromText, inferRecipientNameFromEmail } from "../../web/src/lib/email"
 import { getExtensionErrorMessage } from "~lib/error-messages"
 
 export const config: PlasmoCSConfig = {
@@ -809,20 +809,18 @@ const bindReadyPopoverActions = (
       return
     }
 
-    if (!draft.emailPayload) return
+    const emailPayload = buildEmailPayload(draft, { subject, body: message })
+    if (!emailPayload) {
+      renderPopoverError(popover, getExtensionErrorMessage("email_send_unavailable"))
+      return
+    }
 
     primaryBtn.disabled = true
     primaryBtn.textContent = "Sending…"
 
-    const payload = {
-      ...draft.emailPayload,
-      body: message,
-      subject: subject || draft.emailPayload.subject,
-    }
-
     const sendResponse = await sendRuntimeMessage<{ success: boolean; error?: string }>({
       type: "SEND_EMAIL",
-      payload,
+      payload: emailPayload,
     })
 
     if (sendResponse === null) {
@@ -980,6 +978,7 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
       }
       draftId?: string
       cached?: boolean
+      recipientEmail?: string | null
     }>({ type: "DRAFT_PITCH", payload })
 
     if (response === null) {
@@ -1004,11 +1003,12 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
       fit_highlights,
     } = response.data
     const displayRecipientName = emailRecipientName || name || "Unknown"
-    const draft: DraftPreview = {
+    const resolvedEmail = email ?? response.recipientEmail ?? null
+    const draftBase: DraftPreview = {
       status: "ready",
       actionMode: action_mode as "EMAIL" | "DM",
       recipientName: displayRecipientName,
-      recipientEmail: email,
+      recipientEmail: resolvedEmail,
       detectedName: detected_name || displayRecipientName,
       recipientHandle: recipientHandle || undefined,
       recipientProfileUrl: recipientProfileUrl || undefined,
@@ -1026,23 +1026,9 @@ const handleDraftClick = async (button: HTMLButtonElement, post: HTMLElement, pl
       platform: platform.id,
       draftId: response.draftId,
       cached: response.cached,
-      emailPayload:
-        action_mode === "EMAIL" && email
-          ? {
-              to: email,
-              subject: outreach_payload.subject_line || "",
-              body: outreach_payload.message_content,
-              postId,
-              postUrl: postUrl || undefined,
-              platform: platform.id,
-              draftId: response.draftId,
-              recipientName: displayRecipientName,
-              recipientHandle: recipientHandle || undefined,
-              recipientProfileUrl: recipientProfileUrl || undefined,
-            }
-          : undefined,
       updatedAt: Date.now(),
     }
+    const draft: DraftPreview = { ...draftBase, emailPayload: buildEmailPayload(draftBase) }
 
     const setButtonReady = () => {
       button.className = "rp-draft-btn rp-draft-btn--ready"

@@ -36,48 +36,48 @@ model User {
 
 enum PlanTier {
   FREE
+  BASIC
   PRO
-  POWER
 }
 
 enum SubscriptionStatus {
   ACTIVE
-  TRIALING
   PAST_DUE
   CANCELED
   INCOMPLETE
 }
 
 model Subscription {
-  id                 String             @id @default(cuid())
-  userId             String             @unique
-  dodoCustomerId     String             @unique
-  dodoSubscriptionId String?            @unique
-  dodoPlanId         String?
-  tier               PlanTier           @default(FREE)
-  status             SubscriptionStatus @default(ACTIVE)
-  trialEndsAt        DateTime?
-  currentPeriodStart DateTime
-  currentPeriodEnd   DateTime
-  cancelAtPeriodEnd  Boolean            @default(false)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                         String             @id @default(cuid())
+  userId                     String             @unique
+  dodoCustomerId             String             @unique
+  dodoSubscriptionId         String?            @unique
+  dodoPlanId                 String?
+  previousDodoSubscriptionId String?
+  tier                       PlanTier           @default(FREE)
+  status                     SubscriptionStatus @default(ACTIVE)
+  scheduledTier              PlanTier?
+  scheduledChangeAt          DateTime?
+  currentPeriodStart         DateTime
+  currentPeriodEnd           DateTime
+  cancelAtPeriodEnd          Boolean            @default(false)
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model UsageLedger {
-  id           String   @id @default(cuid())
-  userId       String
-  periodStart  DateTime // aligns with subscription period or calendar month for free
-  periodEnd    DateTime
-  draftsUsed   Int      @default(0)
-  emailsSent   Int      @default(0)
-  variantsUsed Int      @default(0)
-  bonusDrafts  Int      @default(0) // top-up + referral credits, consumed before hitting the cap
-  bonusEmails  Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  periodStart DateTime // aligns with subscription period or calendar month for free
+  periodEnd   DateTime
+  draftsUsed  Int      @default(0)
+  emailsSent  Int      @default(0)
+  bonusDrafts Int      @default(0) // top-up + referral credits, consumed before hitting the cap
+  bonusEmails Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -90,6 +90,40 @@ model BillingEvent {
   type        String
   provider    String   @default("dodo")
   processedAt DateTime @default(now())
+}
+
+/// Audit trail for every subscription lifecycle transition (checkout, plan change,
+/// cancellation, webhook-driven renewal, top-up). Written alongside — never instead
+/// of — the Subscription row itself.
+model SubscriptionEvent {
+  id          String    @id @default(cuid())
+  userId      String
+  type        String // checkout_started | plan_changed | canceled | renewed | topup | past_due | refunded
+  dodoEventId String?
+  fromTier    PlanTier?
+  toTier      PlanTier?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// Short-lived reservation that prevents two concurrent checkout requests from
+/// creating two Dodo checkout sessions for the same user (double-click / retry
+/// race). The unique constraint on userId is the concurrency guard; rows are
+/// deleted on success/failure. A conflicting request re-verifies the referenced
+/// Dodo checkout session's payment status (abandoned/failed → release
+/// immediately) rather than waiting out expiresAt, which is just a crash-recovery
+/// backstop for the rare case a session id never got attached to the row.
+model CheckoutIntent {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  kind                  String // "subscription" | "topup"
+  tier                  PlanTier?
+  productKey            String?
+  dodoCheckoutSessionId String?
+  expiresAt             DateTime
+  createdAt             DateTime  @default(now())
 }
 
 model Referral {

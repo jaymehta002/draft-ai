@@ -5,16 +5,15 @@ import type { PlanTier, SubscriptionStatus, Subscription, UsageLedger } from "@p
 import {
   PLAN_LIMITS,
   UPGRADE_URL,
-  TRIAL_DAYS,
   resolveEffectiveTier as resolveEffectiveTierCore,
   evaluateLimit,
   type PlanLimits,
 } from "@/lib/entitlements-core"
 
 /**
- * Server-side entitlement engine for Phase 3 billing.
+ * Server-side entitlement engine.
  *
- * Metering rules (see plan):
+ * Metering rules:
  *  - draft generated (incl. variants + follow-ups) → 1 draft
  *  - email sent                                     → 1 email
  *  - an email send never also deducts a draft
@@ -22,31 +21,28 @@ import {
  * Bonus credits (top-ups + referrals) raise the ceiling for the current period.
  */
 
-export type Feature = "draft" | "email" | "insight"
+export type Feature = "draft" | "email" | "tone_variant" | "tone_insight"
+type MeteredFeature = "draft" | "email"
 
-export { PLAN_LIMITS, UPGRADE_URL, TRIAL_DAYS, type PlanLimits }
+export { PLAN_LIMITS, UPGRADE_URL, type PlanLimits }
 
 export function isEnforcementEnabled() {
   return process.env.BILLING_ENFORCEMENT_ENABLED === "true"
 }
 
 /** Resolves which tier's limits currently apply given subscription state. */
-export function resolveEffectiveTier(subscription: Subscription | null): {
-  effectiveTier: PlanTier
-  isTrialing: boolean
-} {
+export function resolveEffectiveTier(subscription: Subscription | null): { effectiveTier: PlanTier } {
   return resolveEffectiveTierCore(subscription)
 }
 
 export type Entitlements = {
   tier: PlanTier
-  /** The tier whose limits currently apply (trial → PRO). */
   effectiveTier: PlanTier
   status: SubscriptionStatus
-  isTrialing: boolean
-  trialEndsAt: Date | null
   cancelAtPeriodEnd: boolean
   currentPeriodEnd: Date | null
+  scheduledTier: PlanTier | null
+  scheduledChangeAt: Date | null
   limits: PlanLimits
   usage: {
     draftsUsed: number
@@ -78,9 +74,7 @@ function resolvePeriod(subscription: Subscription | null): { start: Date; end: D
     subscription.currentPeriodStart &&
     subscription.currentPeriodEnd &&
     subscription.currentPeriodEnd > now &&
-    (subscription.status === "ACTIVE" ||
-      subscription.status === "TRIALING" ||
-      subscription.status === "PAST_DUE")
+    (subscription.status === "ACTIVE" || subscription.status === "PAST_DUE")
   ) {
     return { start: subscription.currentPeriodStart, end: subscription.currentPeriodEnd }
   }
@@ -89,10 +83,7 @@ function resolvePeriod(subscription: Subscription | null): { start: Date; end: D
 
 // ─── ledger ─────────────────────────────────────────────────────────────────
 
-async function getOrCreateLedger(
-  userId: string,
-  period: { start: Date; end: Date }
-): Promise<UsageLedger> {
+async function getOrCreateLedger(userId: string, period: { start: Date; end: Date }): Promise<UsageLedger> {
   const existing = await prisma.usageLedger.findUnique({
     where: { userId_periodStart: { userId, periodStart: period.start } },
   })
@@ -137,10 +128,7 @@ export function invalidateEntitlements(userId: string) {
   cache.delete(userId)
 }
 
-export async function getUserEntitlements(
-  userId: string,
-  options?: { fresh?: boolean }
-): Promise<Entitlements> {
+export async function getUserEntitlements(userId: string, options?: { fresh?: boolean }): Promise<Entitlements> {
   if (!options?.fresh) {
     const hit = cache.get(userId)
     if (hit && hit.expiresAt > Date.now()) return hit.value
@@ -150,7 +138,7 @@ export async function getUserEntitlements(
   const period = resolvePeriod(subscription)
   const ledger = await getOrCreateLedger(userId, period)
 
-  const { effectiveTier, isTrialing } = resolveEffectiveTier(subscription)
+  const { effectiveTier } = resolveEffectiveTier(subscription)
   const limits = PLAN_LIMITS[effectiveTier]
 
   const draftsUsed = ledger?.draftsUsed ?? 0
@@ -162,10 +150,10 @@ export async function getUserEntitlements(
     tier: subscription?.tier ?? "FREE",
     effectiveTier,
     status: subscription?.status ?? "ACTIVE",
-    isTrialing,
-    trialEndsAt: subscription?.trialEndsAt ?? null,
     cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
     currentPeriodEnd: subscription?.currentPeriodEnd ?? period.end,
+    scheduledTier: subscription?.scheduledTier ?? null,
+    scheduledChangeAt: subscription?.scheduledChangeAt ?? null,
     limits,
     usage: { draftsUsed, emailsSent, bonusDrafts, bonusEmails },
     remaining: {
@@ -190,13 +178,10 @@ export type EntitlementCheck = {
 }
 
 /**
- * Decides whether a user may perform a metered action *before* it runs.
+ * Decides whether a user may perform a metered/gated action *before* it runs.
  * When BILLING_ENFORCEMENT_ENABLED is off this always allows (staged rollout).
  */
-export async function checkEntitlement(
-  userId: string,
-  feature: Feature
-): Promise<EntitlementCheck> {
+export async function checkEntitlement(userId: string, feature: Feature): Promise<EntitlementCheck> {
   const ent = await getUserEntitlements(userId)
   const base = {
     feature,
@@ -204,8 +189,8 @@ export async function checkEntitlement(
     upgradeUrl: UPGRADE_URL,
   }
 
-  if (feature === "insight") {
-    const allowed = ent.limits.insights
+  if (feature === "tone_variant" || feature === "tone_insight") {
+    const allowed = feature === "tone_variant" ? ent.limits.toneVariants : ent.limits.toneInsights
     return {
       ...base,
       allowed: allowed || !isEnforcementEnabled(),
@@ -244,7 +229,7 @@ function entitlementBlockedMessage(check: Pick<EntitlementCheck, "reason" | "fea
   return `Monthly ${check.feature} limit reached. Upgrade to continue.`
 }
 
-/** Standard 402 response body for a blocked metered request. */
+/** Standard 402 response body for a blocked metered/gated request. */
 export function limitReachedResponse(check: EntitlementCheck) {
   return NextResponse.json(
     {
@@ -264,13 +249,26 @@ export function limitReachedResponse(check: EntitlementCheck) {
 // ─── mutation ──────────────────────────────────────────────────────────────
 
 /**
- * Atomically reserves one unit of usage before external work (OpenAI/Gmail).
- * When enforcement is off, always succeeds after the entitlement check.
+ * Atomically reserves one unit of usage in a single conditional UPDATE — the
+ * row is only incremented if it stays within the cap, decided entirely by the
+ * database in one round trip. This is the concurrency guard: two simultaneous
+ * requests can't both read "under the limit" and both proceed, because the
+ * WHERE clause is re-evaluated per-row by Postgres against the current value,
+ * not a value read earlier in application code.
  */
-export async function reserveUsage(
-  userId: string,
-  feature: Exclude<Feature, "insight">
-): Promise<{ reserved: boolean; check: EntitlementCheck }> {
+async function atomicReserve(userId: string, periodStart: Date, feature: MeteredFeature, baseLimit: number): Promise<boolean> {
+  const affected =
+    feature === "draft"
+      ? await prisma.$executeRaw`UPDATE "UsageLedger" SET "draftsUsed" = "draftsUsed" + 1 WHERE "userId" = ${userId} AND "periodStart" = ${periodStart} AND "draftsUsed" + 1 <= "bonusDrafts" + ${baseLimit}`
+      : await prisma.$executeRaw`UPDATE "UsageLedger" SET "emailsSent" = "emailsSent" + 1 WHERE "userId" = ${userId} AND "periodStart" = ${periodStart} AND "emailsSent" + 1 <= "bonusEmails" + ${baseLimit}`
+  return affected > 0
+}
+
+/**
+ * Reserves one unit of usage before external work (OpenAI/Gmail). When
+ * enforcement is off, always succeeds after the entitlement check.
+ */
+export async function reserveUsage(userId: string, feature: MeteredFeature): Promise<{ reserved: boolean; check: EntitlementCheck }> {
   const check = await checkEntitlement(userId, feature)
   if (!check.allowed) return { reserved: false, check }
   if (!isEnforcementEnabled()) return { reserved: true, check }
@@ -279,32 +277,29 @@ export async function reserveUsage(
   const period = resolvePeriod(subscription)
   await getOrCreateLedger(userId, period)
 
-  await prisma.usageLedger.update({
-    where: { userId_periodStart: { userId, periodStart: period.start } },
-    data: feature === "draft" ? { draftsUsed: { increment: 1 } } : { emailsSent: { increment: 1 } },
-  })
+  const { effectiveTier } = resolveEffectiveTier(subscription)
+  const baseLimit = feature === "draft" ? PLAN_LIMITS[effectiveTier].drafts : PLAN_LIMITS[effectiveTier].emails
+
+  const reserved = await atomicReserve(userId, period.start, feature, baseLimit)
   invalidateEntitlements(userId)
 
-  const fresh = await getUserEntitlements(userId, { fresh: true })
-  const used = feature === "draft" ? fresh.usage.draftsUsed : fresh.usage.emailsSent
-  const bonus = feature === "draft" ? fresh.usage.bonusDrafts : fresh.usage.bonusEmails
-  const baseLimit = feature === "draft" ? fresh.limits.drafts : fresh.limits.emails
-  const { allowed } = evaluateLimit(used, baseLimit, bonus)
-
-  if (!allowed) {
-    await prisma.usageLedger.update({
-      where: { userId_periodStart: { userId, periodStart: period.start } },
-      data: feature === "draft" ? { draftsUsed: { decrement: 1 } } : { emailsSent: { decrement: 1 } },
-    })
-    invalidateEntitlements(userId)
+  if (!reserved) {
     const blocked = await checkEntitlement(userId, feature)
     return { reserved: false, check: blocked }
   }
 
-  return { reserved: true, check }
+  const fresh = await getUserEntitlements(userId, { fresh: true })
+  return {
+    reserved: true,
+    check: {
+      ...check,
+      used: feature === "draft" ? fresh.usage.draftsUsed : fresh.usage.emailsSent,
+      remaining: feature === "draft" ? fresh.remaining.drafts : fresh.remaining.emails,
+    },
+  }
 }
 
-export async function releaseUsage(userId: string, feature: Exclude<Feature, "insight">) {
+export async function releaseUsage(userId: string, feature: MeteredFeature) {
   if (!isEnforcementEnabled()) return
 
   const subscription = await prisma.subscription.findUnique({ where: { userId } })
@@ -321,7 +316,7 @@ export async function releaseUsage(userId: string, feature: Exclude<Feature, "in
   invalidateEntitlements(userId)
 }
 
-export async function incrementUsage(userId: string, feature: Exclude<Feature, "insight">) {
+export async function incrementUsage(userId: string, feature: MeteredFeature) {
   const subscription = await prisma.subscription.findUnique({ where: { userId } })
   const period = resolvePeriod(subscription)
   await getOrCreateLedger(userId, period)
@@ -334,10 +329,7 @@ export async function incrementUsage(userId: string, feature: Exclude<Feature, "
 }
 
 /** Adds bonus credits (top-up purchase or referral reward) to the live period. */
-export async function grantBonusCredits(
-  userId: string,
-  bonus: { drafts?: number; emails?: number }
-) {
+export async function grantBonusCredits(userId: string, bonus: { drafts?: number; emails?: number }) {
   const subscription = await prisma.subscription.findUnique({ where: { userId } })
   const period = resolvePeriod(subscription)
   await getOrCreateLedger(userId, period)
@@ -350,37 +342,4 @@ export async function grantBonusCredits(
     },
   })
   invalidateEntitlements(userId)
-}
-
-/**
- * Starts a 14-day Pro trial on the user's first successful send. No-op if the
- * user already has any subscription record. Trial psychology: let them feel
- * the win before paywall pressure.
- */
-export async function startProTrial(userId: string) {
-  const existing = await prisma.subscription.findUnique({ where: { userId } })
-  if (existing) return existing
-
-  const now = new Date()
-  const trialEnd = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
-
-  const sub = await prisma.subscription.create({
-    data: {
-      userId,
-      // No Dodo customer yet — placeholder id keeps the unique constraint happy
-      // until a real checkout links the account.
-      dodoCustomerId: `trial_${userId}`,
-      tier: "PRO",
-      status: "TRIALING",
-      trialEndsAt: trialEnd,
-      currentPeriodStart: now,
-      currentPeriodEnd: trialEnd,
-    },
-  }).catch(async () => {
-    const row = await prisma.subscription.findUnique({ where: { userId } })
-    if (!row) throw new Error("Failed to start Pro trial")
-    return row
-  })
-  invalidateEntitlements(userId)
-  return sub
 }

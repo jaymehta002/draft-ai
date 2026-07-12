@@ -6,6 +6,7 @@ import { DraftAIBrand } from "~components/draft-ai-brand"
 import {
   ACTIVE_POST_KEY,
   DRAFTS_BY_POST_KEY,
+  buildEmailPayload,
   getActiveDraft,
   setDraftForPost,
   type DraftPreview,
@@ -15,6 +16,7 @@ import { persistDraftEdits } from "~lib/draft-sync"
 import { WEB_URL } from "~lib/config"
 import { cn } from "~lib/utils"
 import { getExtensionErrorMessage } from "~lib/error-messages"
+import { isValidEmailAddress } from "../web/src/lib/email"
 
 function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
   fn: T,
@@ -46,10 +48,6 @@ type SubmissionState = "idle" | "sending" | "sent"
 type StatusTone = "success" | "error" | "info"
 type StatusNote = { tone: StatusTone; text: string }
 
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
-}
-
 const TONE_OPTIONS = [
   { value: "professional", label: "Professional" },
   { value: "warm", label: "Warm" },
@@ -75,6 +73,8 @@ function SidePanel() {
   const [originalSubject, setOriginalSubject] = useState("")
   const [toneRecommendation, setToneRecommendation] = useState<string | null>(null)
   const [recommendedTone, setRecommendedTone] = useState<string | null>(null)
+  const [allowedTones, setAllowedTones] = useState<string[]>(["professional"])
+  const [toneVariantsAllowed, setToneVariantsAllowed] = useState(false)
 
   const dirtyRef = useRef(false)
   const postIdRef = useRef<string | undefined>(undefined)
@@ -169,6 +169,28 @@ function SidePanel() {
   }, [syncFromStorage])
 
   useEffect(() => {
+    const controller = new AbortController()
+    chrome.storage.local.get(["apiKey"], async (result) => {
+      const apiKey = result.apiKey as string | undefined
+      if (!apiKey || controller.signal.aborted) return
+      try {
+        const res = await fetch(`${WEB_URL}/api/billing/status`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          signal: controller.signal,
+        })
+        if (!res.ok || controller.signal.aborted) return
+        const data = await res.json()
+        if (controller.signal.aborted) return
+        if (Array.isArray(data.allowedTones)) setAllowedTones(data.allowedTones)
+        setToneVariantsAllowed(Boolean(data.toneVariants))
+      } catch {
+        // Non-fatal — buttons stay filtered to the safe Free-tier default.
+      }
+    })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
     if (!draft || draft.status !== "ready") return
 
     const controller = new AbortController()
@@ -216,13 +238,20 @@ function SidePanel() {
   }
 
   const handleSend = async () => {
-    if (!draft?.emailPayload) {
-      setStatusNote({ tone: "error", text: getExtensionErrorMessage("email_send_unavailable") })
+    const normalizedEmail = recipientEmail.trim()
+    if (!normalizedEmail || !isValidEmailAddress(normalizedEmail)) {
+      setStatusNote({ tone: "error", text: getExtensionErrorMessage("invalid_recipient_email") })
       return
     }
-    const normalizedEmail = recipientEmail.trim()
-    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
-      setStatusNote({ tone: "error", text: getExtensionErrorMessage("invalid_recipient_email") })
+
+    const payload =
+      draft &&
+      buildEmailPayload(
+        { ...draft, recipientEmail: normalizedEmail, message, subject },
+        { variantId: activeVariantId ?? draft.variantId }
+      )
+    if (!draft || !payload) {
+      setStatusNote({ tone: "error", text: getExtensionErrorMessage("email_send_unavailable") })
       return
     }
 
@@ -237,20 +266,6 @@ function SidePanel() {
       setTimeout(() => {
         selfPersistRef.current = false
       }, 50)
-    }
-
-    const payload = {
-      to: normalizedEmail,
-      subject: subject || draft.emailPayload.subject,
-      body: message,
-      postId: draft.postId || draft.emailPayload.postId,
-      postUrl: draft.postUrl || draft.emailPayload.postUrl,
-      platform: draft.platform || draft.emailPayload.platform,
-      draftId: draft.draftId || draft.emailPayload.draftId,
-      variantId: activeVariantId ?? draft.variantId,
-      recipientName: draft.recipientName || draft.emailPayload.recipientName,
-      recipientHandle: draft.recipientHandle || draft.emailPayload.recipientHandle,
-      recipientProfileUrl: draft.recipientProfileUrl || draft.emailPayload.recipientProfileUrl,
     }
 
     chrome.runtime.sendMessage({ type: "SEND_EMAIL", payload }, (response) => {
@@ -276,14 +291,7 @@ function SidePanel() {
             message,
             subject,
             recipientEmail: normalizedEmail,
-            emailPayload: draft.emailPayload
-              ? {
-                  ...draft.emailPayload,
-                  to: normalizedEmail,
-                  subject: subject || draft.emailPayload.subject,
-                  body: message,
-                }
-              : undefined,
+            emailPayload: payload,
             updatedAt: Date.now(),
           }
           void setDraftForPost(draft.postId, sentDraft)
@@ -307,7 +315,9 @@ function SidePanel() {
     ...(draft?.variants?.map((v) => v.toneUsed) ?? []),
   ])
 
-  const availableTones = TONE_OPTIONS.filter((t) => !usedTones.has(t.value))
+  const availableTones = toneVariantsAllowed
+    ? TONE_OPTIONS.filter((t) => !usedTones.has(t.value) && allowedTones.includes(t.value))
+    : []
 
   const selectVariant = (variant: DraftVariantPreview | null) => {
     if (!draft?.postId) return
@@ -434,8 +444,12 @@ function SidePanel() {
   const isEmail = draft?.actionMode === "EMAIL"
   const isSent = draft?.status === "sent" || submissionState === "sent"
   const isSending = submissionState === "sending"
-  const emailIsValid = !isEmail || !recipientEmail.trim() || isValidEmail(recipientEmail)
-  const canSendEmail = Boolean(message.trim() && recipientEmail.trim() && isValidEmail(recipientEmail))
+  const emailIsValid = !isEmail || !recipientEmail.trim() || isValidEmailAddress(recipientEmail)
+  const canSendEmail = Boolean(
+    draft &&
+      message.trim() &&
+      buildEmailPayload({ ...draft, recipientEmail: recipientEmail.trim(), message, subject })
+  )
 
   return (
     <div className="relative min-h-screen bg-background font-sans text-foreground">

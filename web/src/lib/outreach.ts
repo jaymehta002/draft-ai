@@ -56,6 +56,7 @@ export function normalizeDraftResult(result: DraftResult): DraftResult {
 export function draftResultToResponse(draft: {
   id: string
   recipientName: string | null
+  recipientEmail: string | null
   actionMode: string
   subject: string | null
   message: string
@@ -70,5 +71,6 @@ export function draftResultToResponse(draft: {
     cached,
     draftId: draft.id,
     data: stored,
+    recipientEmail: draft.recipientEmail,
   }
 }

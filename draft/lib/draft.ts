@@ -1,3 +1,5 @@
+import { extractEmailFromText } from "../../web/src/lib/email"
+
 /** @deprecated Legacy single-draft key — migrated to draftsByPostId on read */
 export const DRAFT_STORAGE_KEY = "currentDraft"
 
@@ -133,4 +135,35 @@ export async function setActivePost(postId: string): Promise<void> {
 
 export async function migrateLegacyDraft(): Promise<void> {
   await getDraftsMap()
+}
+
+/**
+ * Single source of truth for constructing a draft's emailPayload. Returns
+ * undefined whenever the draft isn't sendable as EMAIL — callers should
+ * treat that as "can't send yet" rather than special-casing separately.
+ */
+export function buildEmailPayload(
+  draft: DraftPreview,
+  overrides?: { to?: string | null; subject?: string; body?: string; variantId?: string }
+): DraftPreview["emailPayload"] | undefined {
+  if (draft.actionMode !== "EMAIL") return undefined
+  if (!draft.postId || !draft.platform) return undefined
+
+  const rawTo = overrides?.to !== undefined ? overrides.to : (draft.recipientEmail ?? draft.emailPayload?.to)
+  const to = rawTo ? extractEmailFromText(rawTo) : null
+  if (!to) return undefined
+
+  return {
+    to,
+    subject: overrides?.subject ?? draft.subject ?? draft.emailPayload?.subject ?? "",
+    body: overrides?.body ?? draft.message ?? draft.emailPayload?.body ?? "",
+    postId: draft.postId,
+    postUrl: draft.postUrl ?? draft.emailPayload?.postUrl,
+    platform: draft.platform,
+    draftId: draft.draftId ?? draft.emailPayload?.draftId,
+    variantId: overrides?.variantId ?? draft.variantId ?? draft.emailPayload?.variantId,
+    recipientName: draft.recipientName || draft.emailPayload?.recipientName,
+    recipientHandle: draft.recipientHandle || draft.emailPayload?.recipientHandle,
+    recipientProfileUrl: draft.recipientProfileUrl || draft.emailPayload?.recipientProfileUrl,
+  }
 }

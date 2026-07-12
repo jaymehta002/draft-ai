@@ -2,28 +2,29 @@ import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { ScrollReveal, StaggerContainer, StaggerItem } from "@/components/motion"
 import { cn } from "@/lib/utils"
+import { PLAN_PRICE_USD } from "@/lib/plans"
 
 const TIERS = [
   {
     name: "Free",
-    price: "$0",
+    price: `$${PLAN_PRICE_USD.FREE}`,
     period: "forever",
     blurb: "Get a feel for the magic.",
     highlight: false,
   },
   {
-    name: "Pro",
-    price: "$20",
+    name: "Basic",
+    price: `$${PLAN_PRICE_USD.BASIC}`,
     period: "/ month",
     blurb: "For active job seekers.",
-    highlight: true,
+    highlight: false,
   },
   {
-    name: "Power",
-    price: "$50",
+    name: "Pro",
+    price: `$${PLAN_PRICE_USD.PRO}`,
     period: "/ month",
     blurb: "Career changers, power users.",
-    highlight: false,
+    highlight: true,
   },
 ]
 

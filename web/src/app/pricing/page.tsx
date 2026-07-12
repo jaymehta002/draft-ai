@@ -3,33 +3,34 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SiteHeader } from "@/components/marketing/site-header"
 import { SiteFooter } from "@/components/marketing/site-footer"
 import { PricingCta } from "@/components/pricing/pricing-cta"
+import { PLAN_FEATURES, PLAN_PRICE_USD } from "@/lib/plans"
 
 const PLANS = [
   {
     name: "Free",
-    price: "$0",
+    price: `$${PLAN_PRICE_USD.FREE}`,
     period: "forever",
     description: "Get a feel for the magic.",
-    features: ["15 drafts / month", "10 emails / month", "Chrome extension", "Reply tracking"],
+    features: PLAN_FEATURES.FREE,
     highlighted: false,
+  },
+  {
+    name: "Basic",
+    price: `$${PLAN_PRICE_USD.BASIC}`,
+    period: "/ month",
+    description: "For active job seekers.",
+    features: PLAN_FEATURES.BASIC,
+    highlighted: false,
+    tier: "BASIC" as const,
   },
   {
     name: "Pro",
-    price: "$20",
-    period: "/ month",
-    description: "For active job seekers.",
-    features: ["Unlimited-feel drafts", "200 emails / month", "Tone insights", "Follow-ups & templates"],
-    highlighted: true,
-    tier: "PRO" as const,
-  },
-  {
-    name: "Power",
-    price: "$50",
+    price: `$${PLAN_PRICE_USD.PRO}`,
     period: "/ month",
     description: "Career changers and power users.",
-    features: ["Highest limits", "1,000 emails / month", "Advanced analytics", "Priority support"],
-    highlighted: false,
-    tier: "POWER" as const,
+    features: PLAN_FEATURES.PRO,
+    highlighted: true,
+    tier: "PRO" as const,
   },
 ]
 

@@ -43,7 +43,7 @@ const JOB_SEEKER_LINKS: MegaLink[] = [
     href: "/pricing",
     icon: BarChart3,
     title: "Pricing",
-    description: "Free, Pro, and Power plans",
+    description: "Free, Basic, and Pro plans",
   },
 ]
 

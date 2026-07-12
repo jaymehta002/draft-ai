@@ -7,6 +7,7 @@ import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { normalizeEmailGreeting } from "@/lib/email-greeting"
 import { incrementDraftStats } from "@/lib/user-stats"
 import { limitReachedResponse, releaseUsage, reserveUsage } from "@/lib/entitlements"
+import { clampTone } from "@/lib/tone-entitlements"
 import { recordActivity } from "@/lib/engagement"
 import { buildDraftSystemPrompt, flagSuspiciousDraftOutput } from "@/lib/draft-prompt"
 import { classifyIndustry } from "@/lib/industry-classifier"
@@ -130,7 +131,7 @@ export async function POST(req: Request) {
         hasEmail: resolvedHasEmail,
       },
       {
-        outreachTone: profile.outreachTone,
+        outreachTone: clampTone(draftReserve.check.tier, profile.outreachTone),
         draftLength: profile.draftLength,
         outreachLanguage: profile.outreachLanguage,
       },

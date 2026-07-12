@@ -17,6 +17,7 @@ import {
 } from "@/app/actions"
 import { getEngagementData } from "@/app/actions/engagement"
 import { getUserReplyMetrics } from "@/lib/reply-metrics"
+import { getUserEntitlements } from "@/lib/entitlements"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -52,7 +53,7 @@ export default async function DashboardPage({
     ? await prisma.user.findUnique({ where: { email: session.user.email } })
     : null
 
-  const [analytics, draftsData, emailsData, winningTemplates, dashboardData, engagement, recentReplies, replyMetrics] =
+  const [analytics, draftsData, emailsData, winningTemplates, dashboardData, engagement, recentReplies, replyMetrics, entitlements] =
     await Promise.all([
       getAnalyticsData(),
       getDraftsData(),
@@ -62,6 +63,7 @@ export default async function DashboardPage({
       getEngagementData(),
       getRecentReplies(),
       user ? getUserReplyMetrics(user.id) : null,
+      user ? getUserEntitlements(user.id) : null,
     ])
 
   const draftCount = draftsData?.drafts.length ?? 0
@@ -147,6 +149,7 @@ export default async function DashboardPage({
               <TonePerformanceChart
                 byTone={replyMetrics.byTone}
                 fallbackTone={dashboardData?.candidateProfile?.outreachTone ?? "professional"}
+                locked={!entitlements?.limits.toneInsights}
               />
             </div>
           ) : (

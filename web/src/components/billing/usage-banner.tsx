@@ -17,7 +17,7 @@ export function UsageBanner() {
   const [dismissed, setDismissed] = useState(false)
 
   if (!status || dismissed || !status.enforcementEnabled) return null
-  if (status.effectiveTier === "POWER") return null
+  if (status.effectiveTier === "PRO") return null
 
   const draftPct = pct(status.usage.draftsUsed, status.limits.drafts + status.usage.bonusDrafts)
   const emailPct = pct(status.usage.emailsSent, status.limits.emails + status.usage.bonusEmails)

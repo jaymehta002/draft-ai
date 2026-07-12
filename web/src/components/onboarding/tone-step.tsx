@@ -1,7 +1,9 @@
 "use client"
 
 import { motion } from "framer-motion"
+import { Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useBillingStatus } from "@/hooks/use-billing-status"
 
 const TONE_OPTIONS = [
   {
@@ -33,6 +35,11 @@ export function ToneStep({
   value: string
   onChange: (tone: string) => void
 }) {
+  const { status } = useBillingStatus()
+  // Default to Free's allowance while status is still loading so options don't
+  // flash unlocked-then-locked once the real plan resolves.
+  const allowedTones = status?.allowedTones ?? ["professional"]
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -47,24 +54,37 @@ export function ToneStep({
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {TONE_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={cn(
-              "rounded-xl border p-4 text-left transition-[border-color,box-shadow] duration-200",
-              value === option.value
-                ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                : "border-border bg-card hover:border-primary/40"
-            )}
-          >
-            <p className="text-sm font-semibold text-foreground">{option.label}</p>
-            <p className="mt-2 text-xs text-muted-foreground italic leading-relaxed">
-              &ldquo;{option.example}&rdquo;
-            </p>
-          </button>
-        ))}
+        {TONE_OPTIONS.map((option) => {
+          const locked = !allowedTones.includes(option.value)
+          return (
+            <button
+              key={option.value}
+              type="button"
+              disabled={locked}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                "rounded-xl border p-4 text-left transition-[border-color,box-shadow] duration-200",
+                locked
+                  ? "cursor-not-allowed border-border bg-muted/30 opacity-60"
+                  : value === option.value
+                    ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                    : "border-border bg-card hover:border-primary/40"
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-foreground">{option.label}</p>
+                {locked && (
+                  <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Lock className="size-3" /> Upgrade
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground italic leading-relaxed">
+                &ldquo;{option.example}&rdquo;
+              </p>
+            </button>
+          )
+        })}
       </div>
     </motion.div>
   )

@@ -2,9 +2,10 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { useResetOnBackNavigation } from "@/hooks/use-reset-on-back-navigation"
 
 type PricingCtaProps = {
-  tier: "PRO" | "POWER"
+  tier: "BASIC" | "PRO"
   label: string
   variant?: "default" | "outline"
 }
@@ -13,6 +14,7 @@ type PricingCtaProps = {
 export function PricingCta({ tier, label, variant = "default" }: PricingCtaProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  useResetOnBackNavigation(() => setLoading(false))
 
   const handleClick = async () => {
     setLoading(true)
@@ -29,6 +31,10 @@ export function PricingCta({ tier, label, variant = "default" }: PricingCtaProps
         return
       }
       const data = await res.json().catch(() => ({}))
+      if (data.code === "use_change_plan") {
+        window.location.href = "/dashboard/profile?tab=billing"
+        return
+      }
       if (!res.ok || !data.url) throw new Error(data.error || "Could not start checkout")
       window.location.href = data.url
     } catch (e) {

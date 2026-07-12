@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { UsageMeter } from "@/components/billing/usage-meter"
-import { startCheckout, openBillingPortal } from "@/lib/billing-client"
+import { cancelPendingCheckout, changePlan, openBillingPortal, startCheckout, startTopUp } from "@/lib/billing-client"
 import { invalidateBillingStatusCache, useBillingStatus } from "@/hooks/use-billing-status"
+import { useResetOnBackNavigation } from "@/hooks/use-reset-on-back-navigation"
+import { PLAN_LABEL, PLAN_PRICE_USD, TOPUP_PACKS, topUpPriceFor, type TopUpPackId } from "@/lib/plans"
 import { Gift, Copy, Check, Sparkles, CreditCard } from "lucide-react"
 
 type ReferralSummary = {
@@ -19,8 +21,6 @@ type ReferralSummary = {
   bonusDraftsEarned: number
 }
 
-const TIER_LABEL: Record<string, string> = { FREE: "Free", PRO: "Pro", POWER: "Power" }
-
 export function BillingTab() {
   const { status, loading, error: statusError, refresh } = useBillingStatus()
   const [referral, setReferral] = useState<ReferralSummary | null>(null)
@@ -28,6 +28,11 @@ export function BillingTab() {
   const [acting, setActing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // Buttons below navigate away via window.location.href — pressing the
+  // browser back button can restore this component from bfcache with
+  // `acting` still frozen true, leaving every button stuck disabled.
+  useResetOnBackNavigation(() => setActing(false))
 
   useEffect(() => {
     let cancelled = false
@@ -60,6 +65,10 @@ export function BillingTab() {
         } catch {
           // refresh will still run below
         }
+      } else if (params.get("checkout") === "cancelled") {
+        // Release the reservation immediately instead of leaving the next
+        // attempt to self-heal against Dodo's session status.
+        await cancelPendingCheckout()
       }
       await refreshAll()
     }
@@ -84,7 +93,7 @@ export function BillingTab() {
     }
   }, [refresh])
 
-  const runCheckout = async (tier: "PRO" | "POWER") => {
+  const runCheckout = async (tier: "BASIC" | "PRO") => {
     setActing(true)
     setError(null)
     try {
@@ -95,11 +104,25 @@ export function BillingTab() {
     }
   }
 
-  const runTopUp = async () => {
+  const runChangePlan = async (tier: "BASIC" | "PRO") => {
     setActing(true)
     setError(null)
     try {
-      await startCheckout({ product: "email_pack" })
+      await changePlan(tier)
+      invalidateBillingStatusCache()
+      await refresh(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Plan change failed")
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const runTopUp = async (packId: TopUpPackId) => {
+    setActing(true)
+    setError(null)
+    try {
+      await startTopUp(packId)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Checkout failed")
       setActing(false)
@@ -138,10 +161,9 @@ export function BillingTab() {
     return <p className="text-sm text-destructive">{displayError}</p>
   }
 
-  const isPaid = status && status.effectiveTier !== "FREE" && !status.isTrialing
+  const isPaid = status && status.effectiveTier !== "FREE"
   const activating =
-    new URLSearchParams(window.location.search).get("checkout") === "success" &&
-    status?.effectiveTier === "FREE"
+    new URLSearchParams(window.location.search).get("checkout") === "success" && status?.effectiveTier === "FREE"
 
   return (
     <div className="space-y-6">
@@ -155,12 +177,7 @@ export function BillingTab() {
               </CardTitle>
               <CardDescription>Your current plan and usage this period.</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              {status?.isTrialing && <Badge variant="success">Trial</Badge>}
-              <Badge variant={isPaid ? "default" : "secondary"}>
-                {TIER_LABEL[status?.effectiveTier ?? "FREE"]}
-              </Badge>
-            </div>
+            <Badge variant={isPaid ? "default" : "secondary"}>{PLAN_LABEL[status?.effectiveTier ?? "FREE"]}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -170,13 +187,11 @@ export function BillingTab() {
             </div>
           )}
 
-          {status?.isTrialing && status.trialEndsAt && (
+          {status?.scheduledTier && status.scheduledChangeAt && (
             <p className="text-sm text-muted-foreground">
-              Pro trial active until{" "}
-              <span className="font-medium text-foreground">
-                {new Date(status.trialEndsAt).toLocaleDateString()}
-              </span>
-              .
+              Switching to{" "}
+              <span className="font-medium text-foreground">{PLAN_LABEL[status.scheduledTier]}</span> on{" "}
+              {new Date(status.scheduledChangeAt).toLocaleDateString()}.
             </p>
           )}
           {status?.cancelAtPeriodEnd && status.currentPeriodEnd && (
@@ -186,7 +201,7 @@ export function BillingTab() {
           )}
           {status?.status === "PAST_DUE" && (
             <p className="text-sm text-destructive">
-              Payment failed. Update your payment method to avoid losing Pro access.
+              Payment failed. Update your payment method to avoid losing access.
             </p>
           )}
 
@@ -200,20 +215,26 @@ export function BillingTab() {
           {displayError && <p className="text-sm text-destructive">{displayError}</p>}
 
           <div className="flex flex-wrap gap-2">
-            {!isPaid && (
+            {status?.effectiveTier === "FREE" && (
               <>
-                <Button onClick={() => runCheckout("PRO")} disabled={acting}>
+                <Button onClick={() => runCheckout("BASIC")} disabled={acting}>
                   <Sparkles className="size-4" />
-                  Upgrade to Pro — $20/mo
+                  Upgrade to Basic — ${PLAN_PRICE_USD.BASIC}/mo
                 </Button>
-                <Button variant="outline" onClick={() => runCheckout("POWER")} disabled={acting}>
-                  Go Power — $50/mo
+                <Button variant="outline" onClick={() => runCheckout("PRO")} disabled={acting}>
+                  Upgrade to Pro — ${PLAN_PRICE_USD.PRO}/mo
                 </Button>
               </>
             )}
-            {isPaid && status?.effectiveTier === "PRO" && (
-              <Button onClick={() => runCheckout("POWER")} disabled={acting}>
-                Upgrade to Power — $50/mo
+            {status?.effectiveTier === "BASIC" && (
+              <Button onClick={() => runChangePlan("PRO")} disabled={acting}>
+                <Sparkles className="size-4" />
+                Upgrade to Pro — ${PLAN_PRICE_USD.PRO}/mo
+              </Button>
+            )}
+            {status?.effectiveTier === "PRO" && !status.scheduledTier && (
+              <Button variant="outline" onClick={() => runChangePlan("BASIC")} disabled={acting}>
+                Switch to Basic — ${PLAN_PRICE_USD.BASIC}/mo
               </Button>
             )}
             {isPaid && (
@@ -221,9 +242,19 @@ export function BillingTab() {
                 Manage billing
               </Button>
             )}
-            <Button variant="ghost" onClick={runTopUp} disabled={acting}>
-              Buy EmailPack — $5 (+50 emails / +50 drafts)
-            </Button>
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-4">
+            <p className="text-sm font-medium text-foreground">
+              Top up{status?.topUpDiscount ? ` (${Math.round(status.topUpDiscount * 100)}% off on Basic)` : ""}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {Object.values(TOPUP_PACKS).map((pack) => (
+                <Button key={pack.id} variant="ghost" onClick={() => runTopUp(pack.id)} disabled={acting}>
+                  {pack.label} — ${topUpPriceFor(pack.id, status?.effectiveTier ?? "FREE").toFixed(2)}
+                </Button>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -267,3 +298,4 @@ export function BillingTab() {
     </div>
   )
 }
+

@@ -38,12 +38,11 @@ type ExtensionStatus = {
 
 type BillingSummary = {
   tier: string
-  isTrialing: boolean
   draftsRemaining: number
   emailsRemaining: number
 }
 
-const TIER_LABEL: Record<string, string> = { FREE: "Free", PRO: "Pro", POWER: "Power" }
+const TIER_LABEL: Record<string, string> = { FREE: "Free", BASIC: "Basic", PRO: "Pro" }
 
 function PlanBadge({ billing }: { billing: BillingSummary }) {
   const isPaid = billing.tier !== "FREE"
@@ -51,14 +50,10 @@ function PlanBadge({ billing }: { billing: BillingSummary }) {
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-        billing.isTrialing
-          ? "bg-primary/15 text-primary"
-          : isPaid
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted text-muted-foreground"
+        isPaid ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
       )}
     >
-      {billing.isTrialing ? "Trial" : TIER_LABEL[billing.tier] ?? billing.tier}
+      {TIER_LABEL[billing.tier] ?? billing.tier}
     </span>
   )
 }
@@ -309,7 +304,6 @@ function IndexPopup() {
         const data = await response.json()
         setBilling({
           tier: data.effectiveTier,
-          isTrialing: data.isTrialing,
           draftsRemaining: data.remaining?.drafts ?? 0,
           emailsRemaining: data.remaining?.emails ?? 0,
         })

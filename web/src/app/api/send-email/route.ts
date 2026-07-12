@@ -8,7 +8,7 @@ import { extractEmailFromText, inferRecipientNameFromEmail } from "@/lib/email"
 import { normalizeEmailGreeting } from "@/lib/email-greeting"
 import { resolveUploadThingFileUrl } from "@/lib/uploadthing-server"
 import { incrementSentStats } from "@/lib/user-stats"
-import { limitReachedResponse, releaseUsage, reserveUsage, startProTrial } from "@/lib/entitlements"
+import { limitReachedResponse, releaseUsage, reserveUsage } from "@/lib/entitlements"
 import { maybeRewardReferralOnFirstSend } from "@/lib/referral"
 import { recordActivity } from "@/lib/engagement"
 import { resolveOutreachSendFields } from "@/lib/resolve-send-metadata"
@@ -300,7 +300,6 @@ export async function POST(req: Request) {
       await recordActivity(apiKey.userId, "send")
 
       if (isFirstSend) {
-        await startProTrial(apiKey.userId)
         await maybeRewardReferralOnFirstSend(apiKey.userId)
       }
 

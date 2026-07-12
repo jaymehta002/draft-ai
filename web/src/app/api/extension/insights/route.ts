@@ -16,8 +16,8 @@ export async function GET(req: Request) {
     const profile = auth.apiKey!.user.candidateProfile
     const metrics = await getUserReplyMetrics(auth.apiKey!.userId)
 
-    // Tone recommendations are a Pro+ feature; reply-rate stats stay free.
-    const insightCheck = await checkEntitlement(auth.apiKey!.userId, "insight")
+    // Tone recommendations are a Pro-only feature; reply-rate stats stay free.
+    const insightCheck = await checkEntitlement(auth.apiKey!.userId, "tone_insight")
     const recommendation = insightCheck.allowed
       ? recommendTone(metrics, profile?.outreachTone || "professional")
       : null

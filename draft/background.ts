@@ -12,7 +12,8 @@ import {
   saveAuthState,
   verifyAuthState,
 } from "~lib/auth"
-import { migrateLegacyDraft, setDraftForPost, type DraftPreview } from "~lib/draft"
+import { buildEmailPayload, migrateLegacyDraft, setDraftForPost, type DraftPreview } from "~lib/draft"
+import { extractEmailFromText } from "../web/src/lib/email"
 import { captureExtensionError } from "~lib/sentry"
 import { markPostSent, mergeSentPosts, getSentPosts } from "~lib/sent-posts"
 import { readApiError, mapApiErrorToExtensionCode } from "~lib/api-errors"
@@ -328,12 +329,13 @@ async function handleDraftPitchFlow(payload: {
     fit_highlights,
   } = result.data
   const { subject_line, message_content } = outreach_payload
+  const resolvedEmail = extractEmailFromText(payload.text) ?? result.recipientEmail ?? payload.extractedEmail ?? null
 
-  const readyDraft: DraftPreview = {
+  const readyDraftBase: DraftPreview = {
     status: "ready",
     actionMode: action_mode,
     recipientName,
-    recipientEmail: payload.extractedEmail,
+    recipientEmail: resolvedEmail,
     detectedName: detected_name || recipientName,
     recipientHandle: payload.recipientHandle || undefined,
     recipientProfileUrl: payload.recipientProfileUrl || undefined,
@@ -351,26 +353,12 @@ async function handleDraftPitchFlow(payload: {
     platform: payload.platform,
     draftId: result.draftId,
     cached: result.cached,
-    emailPayload:
-      action_mode === "EMAIL" && payload.extractedEmail
-        ? {
-            to: payload.extractedEmail,
-            subject: subject_line || "",
-            body: message_content,
-            postId: payload.postId,
-            postUrl: payload.postUrl || undefined,
-            platform: payload.platform,
-            draftId: result.draftId,
-            recipientName,
-            recipientHandle: payload.recipientHandle || undefined,
-            recipientProfileUrl: payload.recipientProfileUrl || undefined,
-          }
-        : undefined,
     updatedAt: Date.now(),
   }
+  const readyDraft: DraftPreview = { ...readyDraftBase, emailPayload: buildEmailPayload(readyDraftBase) }
 
   await setDraftPreview(readyDraft)
-  return result
+  return { ...result, recipientEmail: resolvedEmail }
 }
 
 async function handleSaveAuth(payload: {
@@ -427,7 +415,7 @@ function limitReachedResult(data: { feature?: string; upgradeUrl?: string }) {
     feature,
     upgradeUrl: `${WEB_URL}${data.upgradeUrl || DEFAULT_UPGRADE_PATH}`,
     error: getExtensionErrorMessage("limit_reached", {
-      feature: (feature as "draft" | "email" | "follow_up" | "insight" | undefined) ?? undefined,
+      feature: (feature as "draft" | "email" | "follow_up" | "tone" | "tone_variant" | "tone_insight" | undefined) ?? undefined,
     }),
   }
 }
@@ -474,6 +462,7 @@ async function handleDraftPitch(payload: unknown) {
       }
       draftId?: string
       cached?: boolean
+      recipientEmail?: string | null
     }
 
     return {
@@ -481,6 +470,7 @@ async function handleDraftPitch(payload: unknown) {
       data: body.data,
       draftId: body.draftId,
       cached: body.cached,
+      recipientEmail: body.recipientEmail ?? null,
     }
   } catch (error: unknown) {
     const message =

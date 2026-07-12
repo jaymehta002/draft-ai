@@ -4,7 +4,7 @@ export type ExtensionApiErrorPayload = {
   code?: string
   error?: string
   retryAfterSeconds?: number
-  feature?: "draft" | "email" | "follow_up" | "insight"
+  feature?: "draft" | "email" | "follow_up" | "tone" | "tone_variant" | "tone_insight"
   upgradeUrl?: string
   details?: unknown
 }
@@ -46,7 +46,7 @@ export function mapApiErrorToExtensionCode(
   if (payload.code === "expired_state") return { code: "expired_state" }
   if (payload.code === "invalid_recipient_email") return { code: "invalid_recipient_email" }
   if (payload.code === "email_send_unavailable") return { code: "email_send_unavailable" }
-  if (payload.code === "gmail_not_connected") return { code: "email_send_unavailable" }
+  if (payload.code === "gmail_not_connected") return { code: "gmail_not_connected" }
 
   return { code: fallback }
 }

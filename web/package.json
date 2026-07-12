@@ -10,6 +10,7 @@
     "pretest": "playwright install chromium",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
+    "test:unit": "node --test src/lib/*.test.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

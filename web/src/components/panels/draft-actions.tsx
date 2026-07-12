@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Copy, Check, ExternalLink, Mail, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { sendDraftFromWeb, copyDmFromWeb } from "@/app/actions/conversation"
+import { UpgradeModal } from "@/components/billing/upgrade-modal"
 
 type WeeklyGoalCardProps = {
   weekProgress: number
@@ -51,6 +52,7 @@ export function DraftActions({
   const [copied, setCopied] = useState(false)
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message)
@@ -64,7 +66,11 @@ export function DraftActions({
       await sendDraftFromWeb(draftId)
       setSent(true)
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to send")
+      if (e instanceof Error && e.message === "limit_reached") {
+        setUpgradeOpen(true)
+      } else {
+        alert(e instanceof Error ? e.message : "Failed to send")
+      }
     } finally {
       setSending(false)
     }
@@ -117,6 +123,7 @@ export function DraftActions({
           </a>
         </Button>
       )}
+      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} feature="email" />
     </div>
   )
 }

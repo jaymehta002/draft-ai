@@ -1,4 +1,5 @@
 import {
+  buildEmailPayload,
   getActivePostId,
   getDraftForPost,
   setDraftForPost,
@@ -46,16 +47,13 @@ export async function persistDraftEdits(
     message,
     subject: nextSubject,
     recipientEmail: nextRecipientEmail,
-    emailPayload: current.emailPayload
-      ? {
-          ...current.emailPayload,
-          to: nextRecipientEmail || current.emailPayload.to,
-          body: message,
-          subject: nextSubject || current.emailPayload.subject,
-        }
-      : undefined,
     updatedAt: Date.now(),
   }
+  updated.emailPayload = buildEmailPayload(updated, {
+    to: nextRecipientEmail,
+    subject: nextSubject,
+    body: message,
+  })
 
   await setDraftForPost(resolvedPostId, updated)
   return updated

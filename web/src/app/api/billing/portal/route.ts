@@ -10,7 +10,7 @@ export async function POST() {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const subscription = await prisma.subscription.findUnique({ where: { userId: user.id } })
-    if (!subscription || subscription.dodoCustomerId.startsWith("trial_")) {
+    if (!subscription) {
       return NextResponse.json({ error: "No billing account yet" }, { status: 400 })
     }
 

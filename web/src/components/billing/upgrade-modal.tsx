@@ -10,41 +10,51 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { startCheckout } from "@/lib/billing-client"
+import { changePlan, startCheckout, CheckoutError } from "@/lib/billing-client"
+import { useResetOnBackNavigation } from "@/hooks/use-reset-on-back-navigation"
+import { PLAN_PRICE_USD, PLAN_FEATURES } from "@/lib/plans"
 
 type UpgradeModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** What the user just hit — used to tailor the headline. */
-  feature?: "draft" | "email" | "follow_up" | "insight"
+  feature?: "draft" | "email" | "follow_up" | "tone" | "tone_variant" | "tone_insight"
   title?: string
   description?: string
 }
 
 const FEATURE_COPY: Record<NonNullable<UpgradeModalProps["feature"]>, string> = {
-  draft: "You've used all your free drafts this month.",
+  draft: "You've used all your drafts this month.",
   email: "You've hit your monthly email limit.",
-  follow_up: "Follow-up drafts are a Pro feature.",
-  insight: "Tone insights are a Pro feature.",
+  follow_up: "Follow-ups require Basic or Pro.",
+  tone: "This tone isn't available on your plan.",
+  tone_variant: "Tone variants are a Pro feature.",
+  tone_insight: "Tone performance insights are a Pro feature.",
 }
 
-const PRO_FEATURES = [
-  "Unlimited-feel drafts",
-  "200 emails / month",
-  "Tone insights & follow-ups",
-  "Winning templates",
-]
-
 export function UpgradeModal({ open, onOpenChange, feature, title, description }: UpgradeModalProps) {
-  const [loading, setLoading] = useState<"PRO" | "POWER" | null>(null)
+  const [loading, setLoading] = useState<"BASIC" | "PRO" | null>(null)
   const [error, setError] = useState<string | null>(null)
+  useResetOnBackNavigation(() => setLoading(null))
 
-  const handleUpgrade = async (tier: "PRO" | "POWER") => {
+  const handleUpgrade = async (tier: "BASIC" | "PRO") => {
     setLoading(tier)
     setError(null)
     try {
       await startCheckout({ tier })
     } catch (e) {
+      // Existing subscribers switching tiers must go through change-plan, not a new checkout.
+      if (e instanceof CheckoutError && e.code === "use_change_plan") {
+        try {
+          await changePlan(tier)
+          onOpenChange(false)
+          return
+        } catch (changeError) {
+          setError(changeError instanceof Error ? changeError.message : "Could not change plan")
+          setLoading(null)
+          return
+        }
+      }
       setError(e instanceof Error ? e.message : "Could not start checkout")
       setLoading(null)
     }
@@ -64,7 +74,7 @@ export function UpgradeModal({ open, onOpenChange, feature, title, description }
         </DialogHeader>
 
         <ul className="space-y-2 py-2 text-sm text-muted-foreground">
-          {PRO_FEATURES.map((f) => (
+          {PLAN_FEATURES.PRO.map((f) => (
             <li key={f} className="flex items-center gap-2">
               <Check className="size-4 shrink-0 text-primary" />
               {f}
@@ -75,16 +85,16 @@ export function UpgradeModal({ open, onOpenChange, feature, title, description }
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button className="flex-1" onClick={() => handleUpgrade("PRO")} disabled={loading !== null}>
-            {loading === "PRO" ? "Redirecting…" : "Upgrade to Pro — $20/mo"}
-          </Button>
           <Button
             variant="outline"
             className="flex-1"
-            onClick={() => handleUpgrade("POWER")}
+            onClick={() => handleUpgrade("BASIC")}
             disabled={loading !== null}
           >
-            {loading === "POWER" ? "Redirecting…" : "Go Power — $50/mo"}
+            {loading === "BASIC" ? "Redirecting…" : `Upgrade to Basic — $${PLAN_PRICE_USD.BASIC}/mo`}
+          </Button>
+          <Button className="flex-1" onClick={() => handleUpgrade("PRO")} disabled={loading !== null}>
+            {loading === "PRO" ? "Redirecting…" : `Upgrade to Pro — $${PLAN_PRICE_USD.PRO}/mo`}
           </Button>
         </div>
       </DialogContent>

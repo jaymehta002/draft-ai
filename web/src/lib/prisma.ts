@@ -12,7 +12,7 @@ const globalForPrisma = global as unknown as {
 }
 
 // Bump when Prisma schema changes so dev hot-reload picks up new fields.
-const PRISMA_SCHEMA_REVISION = 4
+const PRISMA_SCHEMA_REVISION = 5
 
 function createPrismaClient() {
   return new PrismaClient({ adapter })

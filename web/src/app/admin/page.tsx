@@ -29,10 +29,8 @@ export default async function AdminPage() {
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Metric label="MRR" value={`$${m.mrr.toLocaleString()}`} highlight />
-          <Metric label="Trial → paid" value={`${m.trialToPaidRate}%`} />
+          <Metric label="Active Basic" value={m.activeBasic} />
           <Metric label="Active Pro" value={m.activePro} />
-          <Metric label="Active Power" value={m.activePower} />
-          <Metric label="Trialing now" value={m.trialing} />
           <Metric label="Past due" value={m.pastDue} />
           <Metric label="Canceled (mo)" value={m.canceledThisMonth} />
           <Metric label="Total users" value={m.totalUsers} />
