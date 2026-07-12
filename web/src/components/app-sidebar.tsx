@@ -22,6 +22,7 @@ import { LayoutIndicator } from "@/components/motion"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PlanSidebarWidget } from "@/components/billing/plan-sidebar-widget"
 
 export type DashboardSection =
   | "analytics"
@@ -329,6 +330,9 @@ function NavContent({
           )
         })}
       </nav>
+
+      {/* Plan / usage */}
+      <PlanSidebarWidget collapsed={collapsed} />
 
       {/* Footer user block */}
       <SidebarFooter

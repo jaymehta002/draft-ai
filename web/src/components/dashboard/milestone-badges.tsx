@@ -28,7 +28,7 @@ export function MilestoneBadges({ unlocked }: MilestoneBadgesProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2">
           {ALL_MILESTONES.map((id) => {
             const isUnlocked = unlockedSet.has(id)
             return (

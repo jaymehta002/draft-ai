@@ -4,7 +4,6 @@ import {
   Copy,
   Mail,
   Sparkles,
-  TrendingUp,
   ExternalLink,
   LayoutGrid,
 } from "lucide-react"
@@ -28,11 +27,10 @@ import { cn } from "@/lib/utils"
 import { dashboardPathForSection, dashboardSectionFromSearchParam } from "@/lib/dashboard-routes"
 import { StreakCard } from "@/components/dashboard/streak-card"
 import { WeeklyGoalCard } from "@/components/panels/draft-actions"
-import { ReplyRateRing } from "@/components/dashboard/reply-rate-ring"
 import { TrophyCase } from "@/components/dashboard/trophy-case"
 import { TonePerformanceChart } from "@/components/dashboard/tone-performance-chart"
 import { MilestoneBadges } from "@/components/dashboard/milestone-badges"
-import { PlanUpgradeCard } from "@/components/billing/plan-upgrade-card"
+import { EngagementOverviewCard } from "@/components/dashboard/engagement-overview-card"
 
 type EmailsData = Awaited<ReturnType<typeof getEmailsData>>
 
@@ -69,37 +67,123 @@ export default async function DashboardPage({
   const draftCount = draftsData?.drafts.length ?? 0
   const needsProfileEnrichment =
     (dashboardData?.candidateProfile?.workExperiences?.length ?? 0) === 0
+  const hasWeeklyMomentum = (analytics.sentThisWeek ?? 0) > 0
 
   return (
     <FadeIn className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        {needsProfileEnrichment && (
-          <Card className="border-border bg-card shadow-sm">
-            <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted-foreground">
+      {(needsProfileEnrichment || hasWeeklyMomentum) && (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {needsProfileEnrichment && (
+            <div className="flex flex-1 flex-col gap-2 rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-muted-foreground">
                 Add work experience to improve draft quality and match scores.
               </p>
-              <Button size="sm" variant="outline" asChild>
+              <Button size="sm" variant="outline" asChild className="h-7 shrink-0 text-xs">
                 <Link href="/dashboard/profile">Complete profile</Link>
               </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        <PlanUpgradeCard />
-
-        {(analytics.sentThisWeek ?? 0) > 0 && (
-          <Card className="border-primary/20 bg-primary/5 shadow-sm">
-            <CardContent className="py-4">
-              <p className="text-sm text-foreground">
+            </div>
+          )}
+          {hasWeeklyMomentum && (
+            <div className="flex flex-1 items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5 shadow-sm">
+              <p className="text-xs text-foreground">
                 You started{" "}
                 <span className="font-semibold text-primary">{analytics.sentThisWeek}</span>{" "}
                 conversation{analytics.sentThisWeek !== 1 ? "s" : ""} this week. Keep going.
               </p>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          )}
+        </div>
+      )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {/* Hero KPI row */}
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <StatCard
+          icon={Sparkles}
+          label="Pending drafts"
+          value={draftCount}
+          sub={analytics.draftsThisWeek > 0 ? `${analytics.draftsThisWeek} new this week` : undefined}
+          color="primary"
+          href="/dashboard/drafts"
+        />
+        <StatCard
+          icon={Mail}
+          label="Emails started"
+          value={analytics.emailsSent}
+          sub={(analytics.totalReplied ?? 0) > 0 ? `${analytics.replyRate}% reply rate` : undefined}
+          color="chart-2"
+          href="/dashboard/emails"
+        />
+        <StatCard
+          icon={Copy}
+          label="DMs started"
+          value={analytics.dmsCopied}
+          color="chart-1"
+          href="/dashboard/dms"
+        />
+        <StatCard
+          icon={LayoutGrid}
+          label="Pipeline"
+          value={draftCount + (analytics.totalOutreach ?? 0)}
+          sub={`${analytics.totalOutreach ?? 0} conversations started`}
+          color="chart-3"
+          href="/dashboard/pipeline"
+        />
+      </div>
+
+      {/* Main analytics column + widget rail */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="flex flex-col gap-6 xl:col-span-2">
+          <EngagementOverviewCard
+            replyRate={analytics.replyRate ?? 0}
+            replySublabel={`${analytics.replyRate7d ?? 0}% last 7 days · ${analytics.totalReplied ?? 0} replied`}
+            platformBreakdown={analytics.platformBreakdown}
+            cacheHits={analytics.cacheHits}
+            tokensSavedEstimate={analytics.tokensSavedEstimate}
+          />
+
+          {replyMetrics ? (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <EmailPipelineCard emailsData={emailsData} />
+              <TonePerformanceChart
+                byTone={replyMetrics.byTone}
+                fallbackTone={dashboardData?.candidateProfile?.outreachTone ?? "professional"}
+              />
+            </div>
+          ) : (
+            <EmailPipelineCard emailsData={emailsData} />
+          )}
+
+          {winningTemplates.length > 0 && (
+            <Card className="border-border shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardDescription className="text-[10px] font-semibold uppercase tracking-widest">
+                  Messages that got replies
+                </CardDescription>
+                <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
+                  <Link href="/dashboard/templates">View all</Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {winningTemplates.slice(0, 3).map((t) => (
+                  <blockquote
+                    key={t.id}
+                    className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs italic text-muted-foreground"
+                  >
+                    &ldquo;{t.excerpt}&rdquo;
+                    {t.toneUsed && (
+                      <span className="mt-1 block not-italic text-[10px] text-foreground/70">
+                        {t.toneUsed} tone{t.matchScore ? ` · ${t.matchScore}% match` : ""}
+                      </span>
+                    )}
+                  </blockquote>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Widget rail */}
+        <div className="flex flex-col gap-4">
           <StreakCard
             currentStreak={engagement.currentStreak}
             longestStreak={engagement.longestStreak}
@@ -108,162 +192,11 @@ export default async function DashboardPage({
             weekProgress={engagement.weekProgress}
             weeklyGoal={engagement.weeklyGoal}
           />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card className="border-border shadow-sm">
-            <CardContent className="flex items-center justify-center py-8">
-              <ReplyRateRing
-                rate={analytics.replyRate ?? 0}
-                sublabel={`${analytics.replyRate7d ?? 0}% last 7 days · ${analytics.totalReplied ?? 0} replied`}
-              />
-            </CardContent>
-          </Card>
+          <MilestoneBadges unlocked={engagement.milestones} />
           <TrophyCase replies={recentReplies} />
+          <QuickActionsCard />
         </div>
-
-        <MilestoneBadges unlocked={engagement.milestones} />
-
-        {replyMetrics && (
-          <TonePerformanceChart
-            byTone={replyMetrics.byTone}
-            fallbackTone={dashboardData?.candidateProfile?.outreachTone ?? "professional"}
-          />
-        )}
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            icon={Sparkles}
-            label="Pending drafts"
-            value={draftCount}
-            color="primary"
-            href="/dashboard/drafts"
-          />
-          <StatCard
-            icon={Mail}
-            label="Emails started"
-            value={analytics.emailsSent}
-            color="chart-2"
-            href="/dashboard/emails"
-          />
-          <StatCard
-            icon={Copy}
-            label="DMs started"
-            value={analytics.dmsCopied}
-            color="chart-1"
-            href="/dashboard/dms"
-          />
-          <StatCard
-            icon={LayoutGrid}
-            label="Pipeline"
-            value={draftCount + (analytics.totalOutreach ?? 0)}
-            color="chart-3"
-            href="/dashboard/pipeline"
-          />
-        </div>
-
-        {winningTemplates.length > 0 && (
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardDescription className="text-[10px] font-semibold uppercase tracking-widest">
-                Messages that got replies
-              </CardDescription>
-              <Button variant="ghost" size="sm" asChild className="text-xs h-7">
-                <Link href="/dashboard/templates">View all</Link>
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {winningTemplates.slice(0, 3).map((t) => (
-                <blockquote
-                  key={t.id}
-                  className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground italic"
-                >
-                  &ldquo;{t.excerpt}&rdquo;
-                  {t.toneUsed && (
-                    <span className="mt-1 block not-italic text-[10px] text-foreground/70">
-                      {t.toneUsed} tone{t.matchScore ? ` · ${t.matchScore}% match` : ""}
-                    </span>
-                  )}
-                </blockquote>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <EmailPipelineCard emailsData={emailsData} />
-
-          <Card className="border-border shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-2">
-              <CardDescription className="text-[10px] font-semibold uppercase tracking-widest flex items-center gap-2">
-                <TrendingUp className="size-3" /> By platform
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {Object.entries(analytics.platformBreakdown).length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">
-                  No conversations yet — your first thoughtful note is one draft away.
-                </p>
-              ) : (
-                Object.entries(analytics.platformBreakdown).map(([platform, count]) => {
-                  const total = Object.values(analytics.platformBreakdown).reduce((a, b) => a + b, 0)
-                  const pct = total > 0 ? (count / total) * 100 : 0
-                  return (
-                    <div key={platform} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground font-medium">{platform}</span>
-                        <span className="font-semibold tabular-nums text-foreground">{count}</span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-primary transition-[width] duration-500"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="border-border shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Quick actions</CardTitle>
-            <CardDescription>
-              {draftCount} pending draft{draftCount !== 1 ? "s" : ""} · {analytics.emailsSent} emails · {analytics.dmsCopied} DMs
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" asChild className="gap-2">
-                <Link href="/dashboard/pipeline">
-                  <LayoutGrid className="size-3.5" />
-                  Pipeline
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild className="gap-2">
-                <Link href="/dashboard/drafts">
-                  <Sparkles className="size-3.5" />
-                  Drafts
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild className="gap-2">
-                <Link href="/dashboard/emails">
-                  <Mail className="size-3.5" />
-                  Inbox
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild className="gap-2">
-                <Link href="/dashboard/extension">
-                  <ExternalLink className="size-3.5" />
-                  Integrations
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      </div>
     </FadeIn>
   )
 }
@@ -298,7 +231,7 @@ function StatCard({
   return (
     <Card className={cn("group relative border-border shadow-sm transition-[box-shadow,transform] duration-200 hover:shadow-md")}>
       <CardHeader className="pb-3 pt-6">
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-3 flex items-center justify-between">
           <CardDescription className="text-[10px] font-semibold uppercase tracking-widest">
             {label}
           </CardDescription>
@@ -333,7 +266,7 @@ function StatCard({
 
 function EmailPipelineCard({ emailsData }: { emailsData: EmailsData }) {
   return (
-    <Card className="border-border shadow-sm hover:shadow-md transition-shadow duration-200">
+    <Card className="border-border shadow-sm transition-shadow duration-200 hover:shadow-md">
       <CardHeader className="pb-2">
         <CardDescription className="text-[10px] font-semibold uppercase tracking-widest">
           Conversation pipeline
@@ -356,7 +289,7 @@ function EmailPipelineCard({ emailsData }: { emailsData: EmailsData }) {
                 <span className="text-muted-foreground">{label}</span>
                 <span className="font-semibold tabular-nums text-foreground">{value}</span>
               </div>
-              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className={cn("h-full rounded-full transition-[width] duration-500", color)}
                   style={{ width: `${pct}%` }}
@@ -365,9 +298,42 @@ function EmailPipelineCard({ emailsData }: { emailsData: EmailsData }) {
             </div>
           )
         })}
-        <Button variant="outline" size="sm" asChild className="w-full mt-2">
+        <Button variant="outline" size="sm" asChild className="mt-2 w-full">
           <Link href="/dashboard/pipeline">Open full pipeline</Link>
         </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+const QUICK_ACTIONS = [
+  { href: "/dashboard/pipeline", label: "Pipeline", icon: LayoutGrid },
+  { href: "/dashboard/drafts", label: "Drafts", icon: Sparkles },
+  { href: "/dashboard/emails", label: "Inbox", icon: Mail },
+  { href: "/dashboard/extension", label: "Integrations", icon: ExternalLink },
+]
+
+function QuickActionsCard() {
+  return (
+    <Card className="border-border shadow-sm">
+      <CardHeader className="pb-2">
+        <CardDescription className="text-[10px] font-semibold uppercase tracking-widest">
+          Quick actions
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        {QUICK_ACTIONS.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors duration-200 hover:bg-muted/60"
+          >
+            <span className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <Icon className="size-3.5" />
+            </span>
+            {label}
+          </Link>
+        ))}
       </CardContent>
     </Card>
   )
