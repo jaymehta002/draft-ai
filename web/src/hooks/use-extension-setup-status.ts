@@ -94,7 +94,7 @@ const idleStatus: ExtensionSetupStatus = {
 
 export function useExtensionSetupStatus(options?: { enabled?: boolean }) {
   const enabled = options?.enabled !== false
-  const [status, setStatus] = useState<ExtensionSetupStatus>(idleStatus)
+  const [internalStatus, setInternalStatus] = useState<ExtensionSetupStatus>(idleStatus)
 
   const refresh = useCallback(async () => {
     if (!enabled) return idleStatus
@@ -105,15 +105,12 @@ export function useExtensionSetupStatus(options?: { enabled?: boolean }) {
     ])
 
     const next = mergeStatus(ping, server)
-    setStatus(next)
+    setInternalStatus(next)
     return next
   }, [enabled])
 
   useEffect(() => {
-    if (!enabled) {
-      setStatus(idleStatus)
-      return
-    }
+    if (!enabled) return
 
     let cancelled = false
 
@@ -123,7 +120,7 @@ export function useExtensionSetupStatus(options?: { enabled?: boolean }) {
         getIntegrationStatus().catch(() => null),
       ])
       if (!cancelled) {
-        setStatus(mergeStatus(ping, server))
+        setInternalStatus(mergeStatus(ping, server))
       }
     }
 
@@ -137,6 +134,10 @@ export function useExtensionSetupStatus(options?: { enabled?: boolean }) {
       window.clearInterval(intervalId)
     }
   }, [enabled])
+
+  // Derived rather than synced via effect: disabled always reads as idle,
+  // without needing a setState call in the effect body for the disabled branch.
+  const status = enabled ? internalStatus : idleStatus
 
   return { status, refresh }
 }

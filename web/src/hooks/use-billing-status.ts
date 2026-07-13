@@ -53,23 +53,25 @@ export function useBillingStatus(options?: { enabled?: boolean }) {
     if (!enabled) return
 
     let cancelled = false
-    setLoading((prev) => prev || !cachedStatus)
 
-    loadBillingStatus()
-      .then((next) => {
+    const run = async () => {
+      setLoading((prev) => prev || !cachedStatus)
+      try {
+        const next = await loadBillingStatus()
         if (!cancelled) {
           setStatus(next)
           setError(null)
         }
-      })
-      .catch((e) => {
+      } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load billing")
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
-      })
+      }
+    }
+
+    void run()
 
     return () => {
       cancelled = true
