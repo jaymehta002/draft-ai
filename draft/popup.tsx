@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { ExternalLink, LogOut, Loader2, Check, TrendingUp, Send, FileText, Circle, Flame } from "lucide-react"
 import "./style.css"
 import { DraftAIBrand } from "~components/draft-ai-brand"
+import { StatusBanner, type StatusNote } from "~components/status-banner"
 import { WEB_URL } from "~lib/config"
 import type { AuthState } from "~lib/config"
 import { cn } from "~lib/utils"
+
+const EASE_SMOOTH = [0.16, 1, 0.3, 1] as const
 
 // ---------------------------------------------------------------------------
 // Load state
@@ -77,13 +81,13 @@ function WeeklyGoalRing({
       <div className="flex items-center gap-3">
         <div className="relative size-12 shrink-0">
           <svg className="size-12 -rotate-90" viewBox="0 0 44 44">
-            <circle cx="22" cy="22" r="18" fill="none" stroke="#e5e5e5" strokeWidth="3" />
+            <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border)" strokeWidth="3" />
             <circle
               cx="22"
               cy="22"
               r="18"
               fill="none"
-              stroke="#16a34a"
+              stroke="var(--success)"
               strokeWidth="3"
               strokeDasharray={circumference}
               strokeDashoffset={offset}
@@ -146,9 +150,9 @@ function EngagementRow({
   return (
     <div className="space-y-3">
       {streak > 0 && (
-        <div className="flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2">
-          <Flame className="h-4 w-4 text-orange-500" />
-          <span className="text-xs font-semibold text-orange-700">
+        <div className="flex items-center gap-2 rounded-xl border border-[var(--streak-border)] bg-[var(--streak-bg)] px-3 py-2">
+          <Flame className="h-4 w-4 text-[var(--streak-icon)]" />
+          <span className="text-xs font-semibold text-[var(--streak-text)]">
             {streak}-day conversation streak
           </span>
         </div>
@@ -198,8 +202,8 @@ function SetupChecklist({
 
   if (allDone) {
     return (
-      <div className="rounded-xl border border-[#16a34a]/30 bg-[#16a34a]/5 px-4 py-3">
-        <p className="flex items-center gap-2 text-xs font-medium text-[#16a34a]">
+      <div className="rounded-xl border border-[var(--success-border)] bg-[var(--success-bg)] px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-medium text-[var(--success-text)]">
           <Check className="h-3.5 w-3.5" />
           All set — click Draft on any post
         </p>
@@ -216,7 +220,7 @@ function SetupChecklist({
         {steps.map((step) => (
           <li key={step.label} className="flex items-center gap-2 text-xs">
             {step.done ? (
-              <Check className="h-3.5 w-3.5 shrink-0 text-[#16a34a]" />
+              <Check className="h-3.5 w-3.5 shrink-0 text-[var(--success)]" />
             ) : (
               <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
             )}
@@ -252,13 +256,31 @@ function IndexPopup() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus | null>(null)
   const [billing, setBilling] = useState<BillingSummary | null>(null)
+  const [fetchError, setFetchError] = useState<StatusNote | null>(null)
 
   const renderedFromCache = useRef(false)
   const lastFetchTime = useRef<number>(0)
+  const statusMessageTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const CACHE_DURATION = 30000 // 30 seconds
+
+  const showStatusMessage = (text: string, duration = 3000) => {
+    if (statusMessageTimer.current) clearTimeout(statusMessageTimer.current)
+    setStatusMessage(text)
+    statusMessageTimer.current = setTimeout(() => {
+      setStatusMessage(null)
+      statusMessageTimer.current = null
+    }, duration)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (statusMessageTimer.current) clearTimeout(statusMessageTimer.current)
+    }
+  }, [])
 
   const revalidate = (_opts: { silent: boolean }) => {
     setSyncing(true)
+    setFetchError(null)
 
     chrome.runtime.sendMessage({ type: "GET_AUTH" }, (response) => {
       setSyncing(false)
@@ -289,9 +311,12 @@ function IndexPopup() {
           gmailConnected: data.gmailConnected,
           hasDrafted: data.hasDrafted,
         })
+      } else {
+        setFetchError({ tone: "error", text: "Couldn't load your setup status." })
       }
     } catch (error) {
       console.error("Failed to fetch extension status:", error)
+      setFetchError({ tone: "error", text: "Couldn't load your setup status. Check your connection." })
     }
   }
 
@@ -307,9 +332,12 @@ function IndexPopup() {
           draftsRemaining: data.remaining?.drafts ?? 0,
           emailsRemaining: data.remaining?.emails ?? 0,
         })
+      } else {
+        setFetchError({ tone: "error", text: "Couldn't load your plan usage." })
       }
     } catch (error) {
       console.error("Failed to fetch billing status:", error)
+      setFetchError({ tone: "error", text: "Couldn't load your plan usage. Check your connection." })
     }
   }
 
@@ -336,9 +364,12 @@ function IndexPopup() {
           cachedAnalytics: data,
           analyticsCacheTime: now,
         })
+      } else {
+        setFetchError({ tone: "error", text: "Couldn't load your stats." })
       }
     } catch (error) {
       console.error("Failed to fetch analytics:", error)
+      setFetchError({ tone: "error", text: "Couldn't load your stats. Check your connection." })
     } finally {
       setAnalyticsLoading(false)
     }
@@ -385,8 +416,7 @@ function IndexPopup() {
       if (changes.apiKey || changes.userEmail) {
         revalidate({ silent: true })
         setConnecting(false)
-        setStatusMessage("Connected")
-        setTimeout(() => setStatusMessage(null), 3000)
+        showStatusMessage("Connected")
       }
     }
 
@@ -403,7 +433,7 @@ function IndexPopup() {
     chrome.runtime.sendMessage({ type: "START_CONNECT" }, (response) => {
       if (!response?.success) {
         setConnecting(false)
-        setStatusMessage(response?.error || "Failed to open dashboard")
+        showStatusMessage(response?.error || "Failed to open dashboard")
       }
     })
   }
@@ -422,9 +452,12 @@ function IndexPopup() {
       if (response.ok) {
         setAnalytics((prev) => (prev ? { ...prev, weeklyGoal: goal } : prev))
         fetchAnalytics(auth, true)
+      } else {
+        setFetchError({ tone: "error", text: "Couldn't update your weekly goal." })
       }
     } catch (error) {
       console.error("Failed to update weekly goal:", error)
+      setFetchError({ tone: "error", text: "Couldn't update your weekly goal. Check your connection." })
     }
   }
 
@@ -432,8 +465,7 @@ function IndexPopup() {
     chrome.runtime.sendMessage({ type: "DISCONNECT" }, () => {
       setAuth(null)
       setAnalytics(null)
-      setStatusMessage("Disconnected")
-      setTimeout(() => setStatusMessage(null), 3000)
+      showStatusMessage("Disconnected")
     })
   }
 
@@ -462,13 +494,39 @@ function IndexPopup() {
         </div>
       </div>
 
-      <div className="space-y-4 p-5">
-        {auth ? (
-          <div className="space-y-4">
+      <div className="relative max-h-[600px] overflow-y-auto">
+        <div className="space-y-4 p-5">
+          <AnimatePresence mode="wait">
+            {fetchError && (
+              <StatusBanner key={fetchError.text} tone={fetchError.tone}>
+                <span className="flex items-center justify-between gap-2">
+                  {fetchError.text}
+                  <button
+                    type="button"
+                    onClick={() => revalidate({ silent: true })}
+                    className="shrink-0 font-semibold underline underline-offset-2"
+                  >
+                    Retry
+                  </button>
+                </span>
+              </StatusBanner>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="wait">
+            {auth ? (
+              <motion.div
+                key="connected"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.18, ease: EASE_SMOOTH }}
+                className="space-y-4"
+              >
             <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <Check className="h-3.5 w-3.5 text-[#16a34a]" />
+                  <Check className="h-3.5 w-3.5 text-[var(--success)]" />
                   Connected
                 </p>
                 {billing && <PlanBadge billing={billing} />}
@@ -490,37 +548,40 @@ function IndexPopup() {
                 <SkeletonBar className="h-24 w-full rounded-xl" />
               </div>
             ) : analytics ? (
-              <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2, ease: EASE_SMOOTH }}
+                className="space-y-4"
+              >
                 <EngagementRow
                   analytics={analytics}
                   onGoalChange={handleGoalChange}
                 />
-                <div className="grid grid-cols-2 gap-3">
-                  <StatCard
-                    icon={<Send className="h-4 w-4" />}
-                    label="Started today"
-                    value={analytics.sentToday}
-                    accent
-                  />
-                  <StatCard
-                    icon={<FileText className="h-4 w-4" />}
-                    label="Drafts today"
-                    value={analytics.draftsToday}
-                  />
-                  <StatCard
-                    icon={<TrendingUp className="h-4 w-4" />}
-                    label="This week"
-                    value={analytics.sentThisWeek}
-                  />
-                  <StatCard
-                    icon={<Check className="h-4 w-4" />}
-                    label="Reply rate"
-                    value={`${analytics.replyRate ?? 0}%`}
-                    sub={`${analytics.totalReplied ?? 0} replied`}
-                    accent
-                  />
+                <div className="grid grid-cols-2 gap-3 items-stretch">
+                  {[
+                    { icon: <Send className="h-4 w-4" />, label: "Started today", value: analytics.sentToday },
+                    { icon: <FileText className="h-4 w-4" />, label: "Drafts today", value: analytics.draftsToday },
+                    { icon: <TrendingUp className="h-4 w-4" />, label: "This week", value: analytics.sentThisWeek },
+                    {
+                      icon: <Check className="h-4 w-4" />,
+                      label: "Reply rate",
+                      value: `${analytics.replyRate ?? 0}%`,
+                      sub: `${analytics.totalReplied ?? 0} replied`,
+                    },
+                  ].map((card, i) => (
+                    <motion.div
+                      key={card.label}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.18, ease: EASE_SMOOTH, delay: i * 0.04 }}
+                      className="h-full"
+                    >
+                      <StatCard {...card} />
+                    </motion.div>
+                  ))}
                 </div>
-              </>
+              </motion.div>
             ) : null}
 
             <SetupChecklist auth={auth} analytics={analytics} status={extensionStatus} />
@@ -532,9 +593,16 @@ function IndexPopup() {
               <LogOut className="h-4 w-4" />
               Disconnect
             </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
+              </motion.div>
+            ) : (
+              <motion.div
+                key="disconnected"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.18, ease: EASE_SMOOTH }}
+                className="space-y-4"
+              >
             <SetupChecklist auth={null} analytics={null} status={null} />
             <p className="text-sm leading-relaxed text-muted-foreground">
               Connect your account to draft personalized outreach on X and LinkedIn.
@@ -549,22 +617,35 @@ function IndexPopup() {
                 "Connect account"
               )}
             </button>
-          </div>
-        )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {statusMessage && (
-          <p className="text-center text-xs font-medium text-primary">{statusMessage}</p>
-        )}
+          <AnimatePresence>
+            {statusMessage && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="text-center text-xs font-medium text-primary"
+              >
+                {statusMessage}
+              </motion.p>
+            )}
+          </AnimatePresence>
 
-        <a
-          href={`${WEB_URL}/dashboard/extension`}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-center gap-1.5 pt-1 text-xs text-muted-foreground transition-colors duration-200 hover:text-primary"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          Open dashboard
-        </a>
+          <a
+            href={`${WEB_URL}/dashboard/extension`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center gap-1.5 pt-1 text-xs text-muted-foreground transition-colors duration-200 hover:text-primary"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Open dashboard
+          </a>
+        </div>
+        <div className="pointer-events-none sticky bottom-0 -mt-6 h-6 bg-gradient-to-t from-background to-transparent" />
       </div>
     </div>
   )
@@ -575,28 +656,18 @@ function StatCard({
   label,
   value,
   sub,
-  accent = false,
 }: {
   icon: React.ReactNode
   label: string
   value: number | string
   sub?: string
-  accent?: boolean
 }) {
   return (
-    <div
-      className={`rounded-xl border px-3 py-3 ${
-        accent
-          ? "border-border bg-secondary/50"
-          : "border-border bg-card"
-      }`}
-    >
-      <div className={`mb-1.5 flex items-center gap-1.5 ${accent ? "text-primary" : "text-muted-foreground"}`}>
-        {icon}
-      </div>
+    <div className="flex h-full flex-col rounded-xl border border-border bg-card px-3 py-3">
+      <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">{icon}</div>
       <p className="mb-0.5 text-2xl font-semibold text-foreground">{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
-      {sub && <p className="mt-0.5 text-[10px] text-muted-foreground/80">{sub}</p>}
+      <p className="mt-0.5 min-h-[13px] text-[10px] text-muted-foreground/80">{sub}</p>
     </div>
   )
 }

@@ -31,6 +31,8 @@
   --radius: 0.625rem;
   --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
   --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --success: #16a34a;
+  --success-hover: #15803d;
   --success-bg: #dcfce7;
   --success-text: #15803d;
   --success-border: #bbf7d0;
@@ -42,4 +44,9 @@
   --info-border: #bfdbfe;
   --placeholder: #a3a3a3;
   --disabled-bg: #f4f4f5;
+  --streak-bg: #fff7ed;
+  --streak-border: #fed7aa;
+  --streak-text: #c2410c;
+  --streak-icon: #f97316;
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
 }

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { Mail, Copy, Loader2, Check, AlertCircle, Sparkles } from "lucide-react"
 import "./style.css"
 import { DraftAIBrand } from "~components/draft-ai-brand"
+import { StatusBanner, type StatusNote } from "~components/status-banner"
 import {
   ACTIVE_POST_KEY,
   DRAFTS_BY_POST_KEY,
@@ -45,8 +46,6 @@ function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
 }
 
 type SubmissionState = "idle" | "sending" | "sent"
-type StatusTone = "success" | "error" | "info"
-type StatusNote = { tone: StatusTone; text: string }
 
 const TONE_OPTIONS = [
   { value: "professional", label: "Professional" },
@@ -54,6 +53,29 @@ const TONE_OPTIONS = [
   { value: "direct", label: "Direct" },
   { value: "formal", label: "Formal" },
 ] as const
+
+function MatchScoreBadge({ score }: { score: number }) {
+  const tone =
+    score >= 70
+      ? { bg: "bg-[var(--success-bg)]", text: "text-[var(--success-text)]", ring: "ring-[var(--success-border)]" }
+      : score >= 40
+        ? { bg: "bg-primary/10", text: "text-primary", ring: "ring-primary/20" }
+        : { bg: "bg-muted", text: "text-muted-foreground", ring: "ring-border" }
+
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1",
+        tone.bg,
+        tone.text,
+        tone.ring
+      )}
+    >
+      <Sparkles className="h-3.5 w-3.5" />
+      {score}% match
+    </div>
+  )
+}
 
 function SidePanel() {
   const [draft, setDraft] = useState<DraftPreview | null>(null)
@@ -65,7 +87,6 @@ function SidePanel() {
   const [isCopying, setIsCopying] = useState(false)
   const [statusNote, setStatusNote] = useState<StatusNote | null>(null)
   const [upgradeUrl, setUpgradeUrl] = useState<string | null>(null)
-  const [showWhyDraft, setShowWhyDraft] = useState(true)
   const [showConfidenceNudge, setShowConfidenceNudge] = useState(true)
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null)
   const [generatingTone, setGeneratingTone] = useState<string | null>(null)
@@ -81,6 +102,9 @@ function SidePanel() {
   const selfPersistRef = useRef(false)
   const sendingRef = useRef(false)
   const copyingRef = useRef(false)
+  const footerRef = useRef<HTMLElement | null>(null)
+  const footerObserverRef = useRef<ResizeObserver | null>(null)
+  const [footerHeight, setFooterHeight] = useState(0)
 
   const debouncedPersist = useDebouncedCallback((msg: string, subj: string, email: string) => {
     selfPersistRef.current = true
@@ -167,6 +191,26 @@ function SidePanel() {
     chrome.storage.onChanged.addListener(onChange)
     return () => chrome.storage.onChanged.removeListener(onChange)
   }, [syncFromStorage])
+
+  const footerRefCallback = useCallback((node: HTMLElement | null) => {
+    footerObserverRef.current?.disconnect()
+    footerObserverRef.current = null
+    footerRef.current = node
+    if (!node) {
+      setFooterHeight(0)
+      return
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) setFooterHeight(entry.contentRect.height)
+    })
+    observer.observe(node)
+    footerObserverRef.current = observer
+  }, [])
+
+  useEffect(() => {
+    return () => footerObserverRef.current?.disconnect()
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -451,6 +495,16 @@ function SidePanel() {
       buildEmailPayload({ ...draft, recipientEmail: recipientEmail.trim(), message, subject })
   )
 
+  const panelState = !draft || draft.status === "idle"
+    ? "empty"
+    : isLoading
+      ? "loading"
+      : draft.status === "error"
+        ? "error"
+        : isReady
+          ? "ready"
+          : "empty"
+
   return (
     <div className="relative min-h-screen bg-background font-sans text-foreground">
       <div className="flex min-h-screen flex-col">
@@ -458,7 +512,18 @@ function SidePanel() {
           <DraftAIBrand subtitle="Outreach Studio" />
         </header>
 
-        <main className="flex-1 overflow-y-auto px-6 pb-28 pt-6">
+        <main
+          className="flex-1 overflow-y-auto px-6 pt-6"
+          style={{ paddingBottom: isReady ? footerHeight + 24 : 24 }}
+        >
+        <AnimatePresence mode="wait">
+        <motion.div
+          key={panelState}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+        >
           {!draft || draft.status === "idle" ? (
             <EmptyState />
           ) : isLoading ? (
@@ -471,42 +536,11 @@ function SidePanel() {
             />
           ) : isReady ? (
             <div className="space-y-6">
-              {draft.recipientName && (
-                <div className="rounded-xl border border-border bg-primary/10 px-4 py-3">
-                  <p className="text-sm text-muted-foreground">
-                    Drafting for <span className="font-semibold text-primary">{draft.recipientName}</span>
-                  </p>
-                </div>
-              )}
-
-              {draft.matchInsight && (
-                <div className="rounded-xl border border-border bg-card">
-                  <button
-                    type="button"
-                    onClick={() => setShowWhyDraft((v) => !v)}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-foreground"
-                  >
-                    Why this draft
-                    <span className="text-xs text-muted-foreground">
-                      {draft.matchInsight.score}% match
-                    </span>
-                  </button>
-                  {showWhyDraft && (
-                    <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground space-y-2">
-                      {draft.matchInsight.reason && <p>{draft.matchInsight.reason}</p>}
-                      {draft.matchInsight.highlights?.map((h) => (
-                        <p key={h} className="text-primary">· {h}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              {draft.matchInsight && <MatchScoreBadge score={draft.matchInsight.score} />}
 
               {(draft.variants?.length ?? 0) > 0 || availableTones.length > 0 ? (
-                <div className="rounded-xl border border-border bg-card p-3 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-                    Tone variants
-                  </p>
+                <div className="space-y-2">
+                  <p className="field-label mb-0">Tone variants</p>
                   {toneRecommendation && (
                     <p className="text-[10px] text-primary rounded-md bg-primary/5 px-2 py-1.5">
                       {toneRecommendation}
@@ -612,7 +646,7 @@ function SidePanel() {
                   value={message}
                   onChange={(e) => handleMessageChange(e.target.value)}
                   disabled={isSent || isSending}
-                  rows={16}
+                  rows={10}
                   placeholder="Write your message..."
                   className="field-input field-textarea"
                 />
@@ -637,10 +671,15 @@ function SidePanel() {
               )}
             </div>
           ) : null}
+        </motion.div>
+        </AnimatePresence>
         </main>
 
         {isReady && (
-          <footer className="border-t border-border bg-background px-6 py-4 shadow-lg">
+          <footer
+            ref={footerRefCallback}
+            className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background px-6 py-4 shadow-lg"
+          >
             {isEmail ? (
               <button
                 onClick={handleSend}
@@ -808,20 +847,6 @@ function ErrorState({
         )}
       </div>
     </div>
-  )
-}
-
-function StatusBanner({ tone, children }: { tone: StatusTone; children: ReactNode }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className={cn("status-banner", `status-banner--${tone}`)}
-    >
-      {children}
-    </motion.div>
   )
 }
 
