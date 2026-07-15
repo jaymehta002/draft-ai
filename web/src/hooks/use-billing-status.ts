@@ -1,25 +1,53 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react"
 import { fetchBillingStatus, type BillingStatus } from "@/lib/billing-client"
 
 let cachedStatus: BillingStatus | null = null
 let inflight: Promise<BillingStatus> | null = null
+let inflightVersion = 0
+let latestAppliedVersion = 0
+const listeners = new Set<() => void>()
+
+function notify() {
+  for (const listener of listeners) listener()
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+function getSnapshot() {
+  return cachedStatus
+}
+
+function getServerSnapshot() {
+  return null
+}
 
 function loadBillingStatus(force = false): Promise<BillingStatus> {
   if (!force && cachedStatus) return Promise.resolve(cachedStatus)
   if (!force && inflight) return inflight
 
-  inflight = fetchBillingStatus()
+  const version = ++inflightVersion
+  const promise = fetchBillingStatus()
     .then((data) => {
-      cachedStatus = data
+      // A slower, older fetch resolving after a newer (e.g. forced) one must
+      // not clobber the fresher result or re-notify subscribers with stale data.
+      if (version > latestAppliedVersion) {
+        latestAppliedVersion = version
+        cachedStatus = data
+        notify()
+      }
       return data
     })
     .finally(() => {
-      inflight = null
+      if (inflight === promise) inflight = null
     })
 
-  return inflight
+  inflight = promise
+  return promise
 }
 
 export function invalidateBillingStatusCache() {
@@ -28,7 +56,10 @@ export function invalidateBillingStatusCache() {
 
 export function useBillingStatus(options?: { enabled?: boolean }) {
   const enabled = options?.enabled !== false
-  const [status, setStatus] = useState<BillingStatus | null>(enabled ? cachedStatus : null)
+
+  const sharedStatus = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+  const status = enabled ? sharedStatus : null
+
   const [loading, setLoading] = useState(enabled && !cachedStatus)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,7 +68,6 @@ export function useBillingStatus(options?: { enabled?: boolean }) {
     setLoading(true)
     try {
       const next = await loadBillingStatus(force)
-      setStatus(next)
       setError(null)
       return next
     } catch (e) {
@@ -57,11 +87,8 @@ export function useBillingStatus(options?: { enabled?: boolean }) {
     const run = async () => {
       setLoading((prev) => prev || !cachedStatus)
       try {
-        const next = await loadBillingStatus()
-        if (!cancelled) {
-          setStatus(next)
-          setError(null)
-        }
+        await loadBillingStatus()
+        if (!cancelled) setError(null)
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load billing")

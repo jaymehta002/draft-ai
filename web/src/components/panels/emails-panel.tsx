@@ -90,11 +90,18 @@ function ThreadListItem({
   const replyCount = email.threadMessageCount - 1 // exclude the outbound
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onClick()
+        }
+      }}
       className={cn(
-        "group w-full text-left px-4 py-3 transition-[background-color] duration-200 border-b border-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        "group w-full text-left px-4 py-3 transition-[background-color] duration-200 border-b border-slate-100 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         isSelected ? "bg-primary/[0.04] border-l-2 border-l-primary" : "hover:bg-zinc-50"
       )}
     >
@@ -143,7 +150,8 @@ function ThreadListItem({
               <button
                 type="button"
                 className="font-semibold underline hover:no-underline"
-                onClick={async () => {
+                onClick={async (e) => {
+                  e.stopPropagation()
                   const res = await fetch("/api/follow-up-draft", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -182,7 +190,7 @@ function ThreadListItem({
           </div>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
